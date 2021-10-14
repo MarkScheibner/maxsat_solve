@@ -1,12 +1,14 @@
+type WeightedClause = (i32, Vec<i32>);
+
 pub struct Formula {
-	clauses: Vec<(i32, Vec<i32>)>,
+	clauses: Vec<WeightedClause>,
 	parameters: Parameters
 }
 
 pub struct Parameters {
-	n_vars: usize,
-	n_clauses: usize,
-	top: usize
+	pub n_vars: usize,
+	pub n_clauses: usize,
+	pub top: usize
 }
 
 impl Formula {
@@ -35,6 +37,14 @@ impl Formula {
 		}
 
 		formula
+	}
+
+	pub fn get_clauses(&self) -> &Vec<WeightedClause> {
+		&self.clauses
+	}
+
+	pub fn get_parameters(&self) -> &Parameters {
+		&self.parameters
 	}
 }
 
