@@ -1,6 +1,7 @@
 use std::{fs, io::{self, Read}};
 use pico_args::Arguments;
 mod parser;
+mod graph;
 
 
 
