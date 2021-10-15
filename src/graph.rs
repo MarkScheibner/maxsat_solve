@@ -1,83 +1,162 @@
 use crate::parser::Formula;
 use std::collections::HashSet;
 use std::iter::FromIterator;
+use std::iter::Iterator;
 
-type WeightedClauseSet = (i32, HashSet<i32>);
+type Edge<T> = (T, T);
+type WeightedClauseSet = (u32, HashSet<i32>);
 
 pub trait Graph<T> {
-	fn edge(&self, node1: T, node2: T) -> bool;
+	fn edge(&self, node1: &T, node2: &T) -> bool;
 	fn from_formula(f: Formula) -> Self;
+	fn list_edges(&self) -> Vec<&Edge<T>>;
 }
 
 // TODO find a way to retain clause weight
 pub struct PrimalGraph {
-	size: u32,
 	clauses: Vec<WeightedClauseSet>,
-	edges: HashSet<(i32, i32)>
+	// TODO maybe use Vec<Vec<bool>>
+	edges: Vec<HashSet<i32>>
 }
 impl Graph<i32> for PrimalGraph {
-	fn edge(&self, node1: i32, node2: i32) -> bool {
-		self.edges.contains(&(node1, node2)) || self.edges.contains(&(node2, node1))
+	fn edge(&self, node1: &i32, node2: &i32) -> bool {
+		// TODO maybe need abs-values
+		self.edges[*node1 as usize].contains(node2) || self.edges[*node2 as usize].contains(node1)
 	}
 
 	fn from_formula(f: Formula) -> Self {
-		// TODO variables are nodes. nodes are joined by an edge if the respective variables appear in the same clause
+		// variables are nodes. nodes are joined by an edge if the respective variables appear in the same clause
 		let mut clauses: Vec<WeightedClauseSet> = Vec::with_capacity(f.get_parameters().n_clauses);
-
-		// TODO find a better way to estimate the amount of edges needed
-		let set_capacity = f.get_parameters().n_vars * f.get_parameters().n_vars;
-		let edges = HashSet::<(i32, i32)>::with_capacity(set_capacity);
 		
+		let mut edges = Vec::with_capacity(f.get_parameters().n_vars);
+		for _ in 0..f.get_parameters().n_vars {
+			edges.push(HashSet::with_capacity(f.get_parameters().n_vars));
+		}
+		
+		// add edges between variables of each clause
 		for (weight, vars) in f.get_clauses() {
 			// add clause to not lose information
 			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
+			// connect all variables of the clause to each other
+			for var in vars {
+				vars.iter().for_each(|i| {
+					// no edges to self
+					if i != var {
+						edges[*var as usize].insert(*i);
+					}
+				});
+			}
 		}
 
 		PrimalGraph{
-			size: f.get_parameters().n_vars as u32,
 			clauses,
-			edges: HashSet::new()
+			edges
 		}
+	}
+
+	fn list_edges(&self) -> Vec<&Edge<i32>> {
+		// TODO
+		Vec::new()
 	}
 }
 
 pub struct DualGraph {
-	size: u32,
-	edges: HashSet<(i32, i32)>
+	edges: Vec<HashSet<u32>>
 }
-impl Graph<i32> for DualGraph {
-	fn edge(&self, node1: i32, node2: i32) -> bool {
-		self.edges.contains(&(node1, node2)) || self.edges.contains(&(node2, node1))
+impl Graph<u32> for DualGraph {
+	fn edge(&self, node1: &u32, node2: &u32) -> bool {
+		self.edges[*node1 as usize].contains(node2) || self.edges[*node2 as usize].contains(node1)
 	}
 
 	fn from_formula(f: Formula) -> Self {
-		// TODO clauses are nodes. nodes are joined by an edge if the respective clausesshare a variable
+		// TODO clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
+		
+		let mut clauses: Vec<WeightedClauseSet> = Vec::with_capacity(f.get_parameters().n_clauses);
+		
+		let mut var_sets = Vec::with_capacity(f.get_parameters().n_vars);
+		for _ in 0..f.get_parameters().n_vars {
+			var_sets.push(HashSet::with_capacity(f.get_parameters().n_clauses));
+		}
+		
+		// for each variable find the set of clauses that contains that variable
+		for (i, (weight, vars)) in f.get_clauses().iter().enumerate() {
+			// add clause to not lose information
+			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
+			// add clause to set
+			for var in vars {
+				var_sets[var.abs() as usize].insert(i);
+			}
+		}
+
+		// each variable that has more than one clause associated with it will conversely be a variable that is shared
+		// by these clauses. thus, we can use those sets to find the edges
+		for set in var_sets {
+			for clause_a in &set {
+				for clause_b in &set {
+					if clause_a != clause_b {
+						// TODO
+					}
+				}
+			}
+		}
 
 		DualGraph{
-			size: f.get_parameters().n_clauses as u32,
-			edges: HashSet::new()
+			edges: Vec::new()
 		}
 	}
+
+	fn list_edges(&self) -> Vec<&Edge<u32>> {
+		// TODO
+		Vec::new()
+	}
 }
-#[derive(Eq, PartialEq, Hash)]
+
+// TODO this might not be needed
+#[derive(Eq, PartialEq, Hash, Clone, Copy)]
 enum IncidenceGraphNode {
-	Clause(u32),
-	Variable(u32)
+	Clause(u32, u32),
+	Variable(i32)
 }
 pub struct IncidenceGraph {
-	size: u32,
-	edges: HashSet<(IncidenceGraphNode, IncidenceGraphNode)>
+	edges: Vec<HashSet<i32>>,
+	clause_weights: Vec<u32>
 }
 impl Graph<IncidenceGraphNode> for IncidenceGraph {
-	fn edge(&self, node1: IncidenceGraphNode, node2: IncidenceGraphNode) -> bool {
-		// TODO
-		self.edges.contains(&(node1, node2)) || self.edges.contains(&(node2, node1))
+	fn edge(&self, node1: &IncidenceGraphNode, node2: &IncidenceGraphNode) -> bool {
+		use IncidenceGraphNode::*;
+
+		match (node1, node2) {
+			// only clauses and variables are connected
+			(Clause(_, a), Variable(b)) |
+			(Variable(b), Clause(_, a))   => self.edges[*a as usize].contains(b),
+			// there are no clause -> clause or variable -> variable edges
+			_ => false
+		}
 	}
 
 	fn from_formula(f: Formula) -> Self {
-		IncidenceGraph {
-			size: 0,
-			edges: HashSet::new()
+		let mut edges: Vec<HashSet<i32>> = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut weights: Vec<u32> = Vec::with_capacity(f.get_parameters().n_clauses);
+
+		for (weight, vars) in f.get_clauses().iter() {
+			let variables = vars.clone().into_iter().map(|i| i.abs());
+			edges.push(HashSet::from_iter(variables));
+			weights.push(*weight);
 		}
+
+		IncidenceGraph {
+			edges,
+			clause_weights: weights
+		}
+	}
+
+	fn list_edges(&self) -> Vec<&Edge<IncidenceGraphNode>> {
+		use IncidenceGraphNode::*;
+		let clause_list_iter = self.clause_weights.iter().zip(self.edges.iter());
+		// TODO the edges cant be borrowed here
+		let _ : Vec<_> = clause_list_iter.enumerate()
+		         .map(|(i, (w, vars))| vars.iter().map(move |v| (Clause(*w, i as u32), Variable(*v))))
+		         .flatten().collect();
+		Vec::new()
 	}
 }
