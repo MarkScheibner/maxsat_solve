@@ -1,4 +1,4 @@
-type WeightedClause = (i32, Vec<i32>);
+type WeightedClause = (u32, Vec<i32>);
 
 pub struct Formula {
 	clauses: Vec<WeightedClause>,
@@ -29,11 +29,11 @@ impl Formula {
 			let mut values = line.split(' ')
 			                     .map(|s| s.parse::<i32>().expect("file contains malformed clause"));
 			// weight is the first element of a line
-			let weight = values.next().expect("file contains empty claus");
+			let weight = values.next().expect("file contains empty clause");
 			// the rest are the claus
 			let clause = values.collect();
 			
-			formula.clauses.push((weight, clause))
+			formula.clauses.push((weight as u32, clause))
 		}
 
 		formula
