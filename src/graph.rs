@@ -9,25 +9,23 @@ type WeightedClauseSet = (u32, HashSet<i32>);
 pub trait Graph<T> {
 	fn edge(&self, node1: &T, node2: &T) -> bool;
 	fn from_formula(f: Formula) -> Self;
-	fn list_edges(&self) -> Vec<&Edge<T>>;
+	fn list_edges(&self) -> Vec<Edge<T>>;
+	fn neighborhood(&self, node: &T) -> HashSet<T>;
 }
 
-// TODO find a way to retain clause weight
 pub struct PrimalGraph {
-	clauses: Vec<WeightedClauseSet>,
-	// TODO maybe use Vec<Vec<bool>>
+	_clauses: Vec<WeightedClauseSet>,
 	edges: Vec<HashSet<i32>>
 }
 impl Graph<i32> for PrimalGraph {
 	fn edge(&self, node1: &i32, node2: &i32) -> bool {
-		// TODO maybe need abs-values
+		// an edge exists if one of the two nodes is contained in the adjacency set of the other
 		self.edges[*node1 as usize].contains(node2) || self.edges[*node2 as usize].contains(node1)
 	}
 
 	fn from_formula(f: Formula) -> Self {
 		// variables are nodes. nodes are joined by an edge if the respective variables appear in the same clause
 		let mut clauses: Vec<WeightedClauseSet> = Vec::with_capacity(f.get_parameters().n_clauses);
-		
 		let mut edges = Vec::with_capacity(f.get_parameters().n_vars);
 		for _ in 0..f.get_parameters().n_vars {
 			edges.push(HashSet::with_capacity(f.get_parameters().n_vars));
@@ -49,18 +47,22 @@ impl Graph<i32> for PrimalGraph {
 		}
 
 		PrimalGraph{
-			clauses,
+			_clauses: clauses,
 			edges
 		}
 	}
 
-	fn list_edges(&self) -> Vec<&Edge<i32>> {
-		// TODO
-		Vec::new()
+	fn list_edges(&self) -> Vec<Edge<i32>> {
+		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i as i32, *v))).flatten().collect()
+	}
+
+	fn neighborhood(&self, node: &i32) -> HashSet<i32> {
+		self.edges[*node as usize].clone()
 	}
 }
 
 pub struct DualGraph {
+	_clauses: Vec<WeightedClauseSet>,
 	edges: Vec<HashSet<u32>>
 }
 impl Graph<u32> for DualGraph {
@@ -69,57 +71,56 @@ impl Graph<u32> for DualGraph {
 	}
 
 	fn from_formula(f: Formula) -> Self {
-		// TODO clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
+		// clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
 		
 		let mut clauses: Vec<WeightedClauseSet> = Vec::with_capacity(f.get_parameters().n_clauses);
-		
-		let mut var_sets = Vec::with_capacity(f.get_parameters().n_vars);
+		let mut edges : Vec<HashSet<u32>> = Vec::with_capacity(f.get_parameters().n_clauses);
+
+		// we need to keep track of which clauses a variable is part of
+		let mut var_sets : Vec<HashSet<u32>> = Vec::with_capacity(f.get_parameters().n_vars);
 		for _ in 0..f.get_parameters().n_vars {
 			var_sets.push(HashSet::with_capacity(f.get_parameters().n_clauses));
 		}
 		
-		// for each variable find the set of clauses that contains that variable
 		for (i, (weight, vars)) in f.get_clauses().iter().enumerate() {
 			// add clause to not lose information
 			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
-			// add clause to set
+			
 			for var in vars {
-				var_sets[var.abs() as usize].insert(i);
-			}
-		}
-
-		// each variable that has more than one clause associated with it will conversely be a variable that is shared
-		// by these clauses. thus, we can use those sets to find the edges
-		for set in var_sets {
-			for clause_a in &set {
-				for clause_b in &set {
-					if clause_a != clause_b {
-						// TODO
-					}
+				let var = var.abs();
+				// connect clause to all clauses that we already know contain var
+				for clause in &var_sets[var as usize] {
+					edges[*clause as usize].insert(i as u32);
+					edges[i as usize].insert(*clause);
 				}
+				// add clause to set of clauses containing var
+				var_sets[var as usize].insert(i as u32);
 			}
 		}
 
 		DualGraph{
-			edges: Vec::new()
+			_clauses: clauses,
+			edges
 		}
 	}
 
-	fn list_edges(&self) -> Vec<&Edge<u32>> {
-		// TODO
-		Vec::new()
+	fn list_edges(&self) -> Vec<Edge<u32>> {
+		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i as u32, *v))).flatten().collect()
+	}
+
+	fn neighborhood(&self, node: &u32) -> HashSet<u32> {
+		self.edges[*node as usize].clone()
 	}
 }
 
-// TODO this might not be needed
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 enum IncidenceGraphNode {
-	Clause(u32, u32),
+	Clause(u32),
 	Variable(i32)
 }
 pub struct IncidenceGraph {
 	edges: Vec<HashSet<i32>>,
-	clause_weights: Vec<u32>
+	_clause_weights: Vec<u32>
 }
 impl Graph<IncidenceGraphNode> for IncidenceGraph {
 	fn edge(&self, node1: &IncidenceGraphNode, node2: &IncidenceGraphNode) -> bool {
@@ -127,8 +128,8 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 
 		match (node1, node2) {
 			// only clauses and variables are connected
-			(Clause(_, a), Variable(b)) |
-			(Variable(b), Clause(_, a))   => self.edges[*a as usize].contains(b),
+			(Clause(a), Variable(b)) |
+			(Variable(b), Clause(a))   => self.edges[*a as usize].contains(b),
 			// there are no clause -> clause or variable -> variable edges
 			_ => false
 		}
@@ -146,17 +147,31 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 
 		IncidenceGraph {
 			edges,
-			clause_weights: weights
+			_clause_weights: weights
 		}
 	}
 
-	fn list_edges(&self) -> Vec<&Edge<IncidenceGraphNode>> {
+	fn list_edges(&self) -> Vec<Edge<IncidenceGraphNode>> {
 		use IncidenceGraphNode::*;
-		let clause_list_iter = self.clause_weights.iter().zip(self.edges.iter());
-		// TODO the edges cant be borrowed here
-		let _ : Vec<_> = clause_list_iter.enumerate()
-		         .map(|(i, (w, vars))| vars.iter().map(move |v| (Clause(*w, i as u32), Variable(*v))))
-		         .flatten().collect();
-		Vec::new()
+		self.edges.iter().enumerate()
+		                 .map(|(i, vars)| vars.iter().map(move |v| (Clause(i as u32), Variable(*v))))
+		                 .flatten().collect()
+	}
+
+	fn neighborhood(&self, node: &IncidenceGraphNode) -> HashSet<IncidenceGraphNode> {
+		use IncidenceGraphNode::*;
+		match node {
+			Clause(c) => self.edges[*c as usize].iter().map(|i| Variable(*i)).collect(),
+			// TODO this takes O(m)
+			Variable(v) => {
+				self.edges.iter().enumerate().filter_map(|(i, s)| {
+					if s.contains(v) {
+						Some(Clause(i as u32))
+					} else {
+						None
+					}
+				}).collect()
+			}
+		}
 	}
 }
