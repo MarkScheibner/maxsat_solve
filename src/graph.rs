@@ -36,13 +36,13 @@ impl Graph<i32> for PrimalGraph {
 			// add clause to not lose information
 			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
 			// connect all variables of the clause to each other
-			for var in vars {
-				vars.iter().for_each(|i| {
-					// no edges to self
-					if i != var {
-						edges[*var as usize].insert(*i);
+			for var_a in vars {
+				for var_b in vars {
+					if var_a != var_b {
+						edges[*var_a as usize].insert(*var_b);
+						edges[*var_b as usize].insert(*var_a);
 					}
-				});
+				}
 			}
 		}
 
@@ -75,6 +75,9 @@ impl Graph<u32> for DualGraph {
 		
 		let mut clauses: Vec<WeightedClauseSet> = Vec::with_capacity(f.get_parameters().n_clauses);
 		let mut edges : Vec<HashSet<u32>> = Vec::with_capacity(f.get_parameters().n_clauses);
+		for _ in 0..f.get_parameters().n_clauses {
+			edges.push(HashSet::with_capacity(f.get_parameters().n_clauses));
+		}
 
 		// we need to keep track of which clauses a variable is part of
 		let mut var_sets : Vec<HashSet<u32>> = Vec::with_capacity(f.get_parameters().n_vars);
@@ -114,7 +117,7 @@ impl Graph<u32> for DualGraph {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
-enum IncidenceGraphNode {
+pub enum IncidenceGraphNode {
 	Clause(u32),
 	Variable(i32)
 }
