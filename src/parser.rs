@@ -50,7 +50,7 @@ impl Formula {
 
 impl Parameters {
 	fn parse_parameters(p_line: &str) -> Parameters {
-		let params: Vec<&str> = p_line.split("").collect();
+		let params: Vec<&str> = p_line.split(' ').collect();
 		let n_vars = params[2].parse().expect("parameter line is malformed");
 		let n_clauses = params[3].parse().expect("parameter line is malformed");
 		let top = params[4].parse().expect("parameter line is malformed");
@@ -62,3 +62,21 @@ impl Parameters {
 	}
 }
 
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn test_parameter_parser() {
+
+	}
+
+	#[test]
+	fn test_formula_parser() {
+
+	}
+
+	#[test]
+	fn test_parser() {
+
+	}
+}
