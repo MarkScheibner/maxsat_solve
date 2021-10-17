@@ -37,10 +37,13 @@ impl Graph<i32> for PrimalGraph {
 			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
 			// connect all variables of the clause to each other
 			for var_a in vars {
+				let var_a = var_a.abs();
 				for var_b in vars {
+					let var_b = var_b.abs();
 					if var_a != var_b {
-						edges[*var_a as usize].insert(*var_b);
-						edges[*var_b as usize].insert(*var_a);
+						// variables start at 1
+						edges[var_a as usize - 1].insert(var_b);
+						edges[var_b as usize - 1].insert(var_a);
 					}
 				}
 			}
@@ -90,7 +93,8 @@ impl Graph<u32> for DualGraph {
 			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
 			
 			for var in vars {
-				let var = var.abs();
+				// variables start at 1
+				let var = var.abs() - 1;
 				// connect clause to all clauses that we already know contain var
 				for clause in &var_sets[var as usize] {
 					edges[*clause as usize].insert(i as u32);
