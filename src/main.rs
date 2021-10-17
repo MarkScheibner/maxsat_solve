@@ -2,6 +2,7 @@ use std::{fs, io::{self, Read}};
 use pico_args::Arguments;
 mod parser;
 mod graph;
+use graph::Graph;
 
 
 
@@ -27,6 +28,24 @@ fn main() {
 
 	// parse formula
 	let formula = parser::Formula::new(contents);
+
+	let primal = args.contains("-p") || args.contains("--primal");
+	let dual = args.contains("-d") || args.contains("--dual");
+	let incidence = args.contains("-i") || args.contains("--incidence");
+
+	if primal {
+		let graph = graph::PrimalGraph::from_formula(formula);
+		println!("Primal Graph has {} edges", graph.list_edges().len());
+
+	} else if dual {
+		let graph = graph::DualGraph::from_formula(formula);
+		println!("Dual Graph has {} edges", graph.list_edges().len());
+	} else if incidence {
+		let graph = graph::IncidenceGraph::from_formula(formula);
+		println!("Incidence Graph has {} edges", graph.list_edges().len());
+	} else {
+		// TODO print arguments
+	}
 
 	// TODO do cool stuff with formula
 
