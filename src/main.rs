@@ -13,10 +13,17 @@ fn main() {
 	
 	// read contents from file or stdin depending on command line arguments
 	let mut contents = String::new();
-	match file_name {
-		Some(file_name) => contents = fs::read_to_string(file_name).expect("Error reading file"),
-		None => { io::stdin().read_to_string(&mut contents).expect("Error reading from STDIN"); }
+	let mut reader: Box<dyn std::io::Read> = match file_name {
+		Some(file_name) => Box::new(fs::File::open(file_name).expect("Error reading file")),
+		None => Box::new(io::stdin())
+	};
+
+	// decompress if needed
+	if args.contains("-c") || args.contains("--compressed") {
+		reader = Box::new(flate2::read::GzDecoder::new(reader));
 	}
+
+	reader.read_to_string(&mut contents).expect("Error reading file");
 
 	// parse formula
 	let formula = parser::Formula::new(contents);
