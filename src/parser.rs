@@ -31,7 +31,9 @@ impl Formula {
 			// weight is the first element of a line
 			let weight = values.next().expect("file contains empty clause");
 			// the rest are the claus
-			let clause = values.collect();
+			let mut clause: Vec<i32> = values.collect();
+			// except for the last item, which is always 0
+			clause.remove(clause.len() - 1);
 			
 			formula.clauses.push((weight as u32, clause))
 		}
