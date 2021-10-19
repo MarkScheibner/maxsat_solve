@@ -11,6 +11,7 @@ pub trait Graph<T> {
 	fn from_formula(f: Formula)          -> Self;
 	fn list_edges(&self)                 -> Vec<Edge<T>>;
 	fn neighborhood(&self, node: &T)     -> MetroHashSet<T>;
+	fn size(&self)                       -> usize;
 }
 
 pub struct PrimalGraph {
@@ -58,11 +59,18 @@ impl Graph<usize> for PrimalGraph {
 	}
 
 	fn list_edges(&self) -> Vec<Edge<usize>> {
-		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten().collect()
+		// build edges from each neighborhood set
+		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten();
+		// only list edges in one direction
+		edge_iter.filter(|(a, b)| a < b).collect()
 	}
 
 	fn neighborhood(&self, node: &usize) -> MetroHashSet<usize> {
 		self.edges[*node].clone()
+	}
+
+	fn size(&self) -> usize {
+		self.size
 	}
 }
 
@@ -112,11 +120,18 @@ impl Graph<usize> for DualGraph {
 	}
 
 	fn list_edges(&self) -> Vec<Edge<usize>> {
-		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten().collect()
+		// build edges from each neighborhood set
+		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten();
+		// only list edges in one direction
+		edge_iter.filter(|(a, b)| a < b).collect()
 	}
 
 	fn neighborhood(&self, node: &usize) -> MetroHashSet<usize> {
 		self.edges[*node].clone()
+	}
+
+	fn size(&self) -> usize {
+		self.size
 	}
 }
 
@@ -182,5 +197,9 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 				}).collect()
 			}
 		}
+	}
+
+	fn size(&self) -> usize {
+		self.size
 	}
 }
