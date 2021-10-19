@@ -14,6 +14,7 @@ pub trait Graph<T> {
 }
 
 pub struct PrimalGraph {
+	size: usize,
 	_clauses: Vec<WeightedClauseSet>,
 	edges: Vec<HashSet<usize>>
 }
@@ -50,6 +51,7 @@ impl Graph<usize> for PrimalGraph {
 		}
 
 		PrimalGraph{
+			size: f.get_parameters().n_vars,
 			_clauses: clauses,
 			edges
 		}
@@ -65,6 +67,7 @@ impl Graph<usize> for PrimalGraph {
 }
 
 pub struct DualGraph {
+	size: usize,
 	_clauses: Vec<WeightedClauseSet>,
 	edges: Vec<HashSet<usize>>
 }
@@ -106,6 +109,7 @@ impl Graph<usize> for DualGraph {
 		}
 
 		DualGraph{
+			size: f.get_parameters().n_clauses,
 			_clauses: clauses,
 			edges
 		}
@@ -126,6 +130,7 @@ pub enum IncidenceGraphNode {
 	Variable(usize)
 }
 pub struct IncidenceGraph {
+	size: usize,
 	edges: Vec<HashSet<usize>>,
 	_clause_weights: Vec<usize>
 }
@@ -153,6 +158,7 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 		}
 
 		IncidenceGraph {
+			size: f.get_parameters().n_clauses + f.get_parameters().n_vars,
 			edges,
 			_clause_weights: weights
 		}
