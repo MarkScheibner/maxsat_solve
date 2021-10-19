@@ -1,22 +1,22 @@
 use crate::parser::Formula;
-use std::collections::HashSet;
+use metrohash::MetroHashSet;
 use std::iter::FromIterator;
 use std::iter::Iterator;
 
 type Edge<T> = (T, T);
-type WeightedClauseSet = (usize, HashSet<isize>);
+type WeightedClauseSet = (usize, MetroHashSet<isize>);
 
 pub trait Graph<T> {
 	fn edge(&self, node1: &T, node2: &T) -> bool;
 	fn from_formula(f: Formula) -> Self;
 	fn list_edges(&self) -> Vec<Edge<T>>;
-	fn neighborhood(&self, node: &T) -> HashSet<T>;
+	fn neighborhood(&self, node: &T) -> MetroHashSet<T>;
 }
 
 pub struct PrimalGraph {
 	size: usize,
 	_clauses: Vec<WeightedClauseSet>,
-	edges: Vec<HashSet<usize>>
+	edges: Vec<MetroHashSet<usize>>
 }
 impl Graph<usize> for PrimalGraph {
 	fn edge(&self, node1: &usize, node2: &usize) -> bool {
@@ -27,15 +27,12 @@ impl Graph<usize> for PrimalGraph {
 	fn from_formula(f: Formula) -> Self {
 		// variables are nodes. nodes are joined by an edge if the respective variables appear in the same clause
 		let mut clauses: Vec<WeightedClauseSet> = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut edges = Vec::with_capacity(f.get_parameters().n_vars);
-		for _ in 0..f.get_parameters().n_vars {
-			edges.push(HashSet::with_capacity(f.get_parameters().n_vars));
-		}
+		let mut edges = vec![MetroHashSet::default(); f.get_parameters().n_vars];
 		
 		// add edges between variables of each clause
 		for (weight, vars) in f.get_clauses() {
 			// add clause to not lose information
-			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
+			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
 			// connect all variables of the clause to each other
 			for var_a in vars {
 				let var_a = var_a.abs() as usize;
@@ -61,7 +58,7 @@ impl Graph<usize> for PrimalGraph {
 		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten().collect()
 	}
 
-	fn neighborhood(&self, node: &usize) -> HashSet<usize> {
+	fn neighborhood(&self, node: &usize) -> MetroHashSet<usize> {
 		self.edges[*node].clone()
 	}
 }
@@ -69,7 +66,7 @@ impl Graph<usize> for PrimalGraph {
 pub struct DualGraph {
 	size: usize,
 	_clauses: Vec<WeightedClauseSet>,
-	edges: Vec<HashSet<usize>>
+	edges: Vec<MetroHashSet<usize>>
 }
 impl Graph<usize> for DualGraph {
 	fn edge(&self, node1: &usize, node2: &usize) -> bool {
@@ -80,20 +77,14 @@ impl Graph<usize> for DualGraph {
 		// clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
 		
 		let mut clauses = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut edges: Vec<HashSet<usize>> = Vec::with_capacity(f.get_parameters().n_clauses);
-		for _ in 0..f.get_parameters().n_clauses {
-			edges.push(HashSet::with_capacity(f.get_parameters().n_clauses));
-		}
+		let mut edges = vec![MetroHashSet::default(); f.get_parameters().n_clauses];
 
 		// we need to keep track of which clauses a variable is part of
-		let mut var_sets : Vec<HashSet<usize>> = Vec::with_capacity(f.get_parameters().n_vars);
-		for _ in 0..f.get_parameters().n_vars {
-			var_sets.push(HashSet::with_capacity(f.get_parameters().n_clauses));
-		}
+		let mut var_sets : Vec<MetroHashSet<usize>> = vec![MetroHashSet::default(); f.get_parameters().n_vars];
 		
 		for (i, (weight, vars)) in f.get_clauses().iter().enumerate() {
 			// add clause to not lose information
-			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
+			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
 			
 			for var in vars {
 				// variables start at 1
@@ -119,7 +110,7 @@ impl Graph<usize> for DualGraph {
 		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten().collect()
 	}
 
-	fn neighborhood(&self, node: &usize) -> HashSet<usize> {
+	fn neighborhood(&self, node: &usize) -> MetroHashSet<usize> {
 		self.edges[*node].clone()
 	}
 }
@@ -131,7 +122,7 @@ pub enum IncidenceGraphNode {
 }
 pub struct IncidenceGraph {
 	size: usize,
-	edges: Vec<HashSet<usize>>,
+	edges: Vec<MetroHashSet<usize>>,
 	_clause_weights: Vec<usize>
 }
 impl Graph<IncidenceGraphNode> for IncidenceGraph {
@@ -148,12 +139,12 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 	}
 
 	fn from_formula(f: Formula) -> Self {
-		let mut edges: Vec<HashSet<usize>> = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut edges: Vec<MetroHashSet<usize>> = Vec::with_capacity(f.get_parameters().n_clauses);
 		let mut weights: Vec<usize> = Vec::with_capacity(f.get_parameters().n_clauses);
 
 		for (weight, vars) in f.get_clauses().iter() {
 			let variables = vars.clone().into_iter().map(|i| i.abs() as usize);
-			edges.push(HashSet::from_iter(variables));
+			edges.push(MetroHashSet::from_iter(variables));
 			weights.push(*weight);
 		}
 
@@ -171,7 +162,7 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 		                 .flatten().collect()
 	}
 
-	fn neighborhood(&self, node: &IncidenceGraphNode) -> HashSet<IncidenceGraphNode> {
+	fn neighborhood(&self, node: &IncidenceGraphNode) -> MetroHashSet<IncidenceGraphNode> {
 		use IncidenceGraphNode::*;
 		match node {
 			Clause(c) => self.edges[*c].iter().map(|i| Variable(*i)).collect(),
