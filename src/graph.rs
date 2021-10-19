@@ -8,26 +8,28 @@ type WeightedClauseSet = (usize, MetroHashSet<isize>);
 
 pub trait Graph<T> {
 	fn edge(&self, node1: &T, node2: &T) -> bool;
-	fn from_formula(f: Formula) -> Self;
-	fn list_edges(&self) -> Vec<Edge<T>>;
-	fn neighborhood(&self, node: &T) -> MetroHashSet<T>;
+	fn from_formula(f: Formula)          -> Self;
+	fn list_edges(&self)                 -> Vec<Edge<T>>;
+	fn neighborhood(&self, node: &T)     -> MetroHashSet<T>;
 }
 
 pub struct PrimalGraph {
-	size: usize,
+	size:     usize,
 	_clauses: Vec<WeightedClauseSet>,
-	edges: Vec<MetroHashSet<usize>>
+	edges:    Vec<MetroHashSet<usize>>
 }
 impl Graph<usize> for PrimalGraph {
-	fn edge(&self, node1: &usize, node2: &usize) -> bool {
+	fn edge(&self, node_a: &usize, node_b: &usize) -> bool {
+		let a_to_b = self.edges[*node_a].contains(node_b);
+		let b_to_a = self.edges[*node_b].contains(node_a);
 		// an edge exists if one of the two nodes is contained in the adjacency set of the other
-		self.edges[*node1 as usize].contains(node2) || self.edges[*node2 as usize].contains(node1)
+		a_to_b || b_to_a
 	}
 
 	fn from_formula(f: Formula) -> Self {
 		// variables are nodes. nodes are joined by an edge if the respective variables appear in the same clause
-		let mut clauses: Vec<WeightedClauseSet> = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut edges = vec![MetroHashSet::default(); f.get_parameters().n_vars];
+		let mut clauses = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut edges   = vec![MetroHashSet::default(); f.get_parameters().n_vars];
 		
 		// add edges between variables of each clause
 		for (weight, vars) in f.get_clauses() {
@@ -38,10 +40,11 @@ impl Graph<usize> for PrimalGraph {
 				let var_a = var_a.abs() as usize;
 				for var_b in vars {
 					let var_b = var_b.abs() as usize;
+					// no edges to self
 					if var_a != var_b {
 						// variables start at 1
-						edges[var_a as usize - 1].insert(var_b);
-						edges[var_b as usize - 1].insert(var_a);
+						edges[var_a - 1].insert(var_b);
+						edges[var_b - 1].insert(var_a);
 					}
 				}
 			}
@@ -69,18 +72,20 @@ pub struct DualGraph {
 	edges: Vec<MetroHashSet<usize>>
 }
 impl Graph<usize> for DualGraph {
-	fn edge(&self, node1: &usize, node2: &usize) -> bool {
-		self.edges[*node1].contains(node2) || self.edges[*node2].contains(node1)
+	fn edge(&self, node_a: &usize, node_b: &usize) -> bool {
+		let a_to_b = self.edges[*node_a].contains(node_b);
+		let b_to_a = self.edges[*node_b].contains(node_a);
+		// an edge exists if one of the two nodes is contained in the adjacency set of the other
+		a_to_b || b_to_a
 	}
 
 	fn from_formula(f: Formula) -> Self {
 		// clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
-		
 		let mut clauses = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut edges = vec![MetroHashSet::default(); f.get_parameters().n_clauses];
+		let mut edges   = vec![MetroHashSet::default(); f.get_parameters().n_clauses];
 
 		// we need to keep track of which clauses a variable is part of
-		let mut var_sets : Vec<MetroHashSet<usize>> = vec![MetroHashSet::default(); f.get_parameters().n_vars];
+		let mut var_sets: Vec<MetroHashSet<usize>> = vec![MetroHashSet::default(); f.get_parameters().n_vars];
 		
 		for (i, (weight, vars)) in f.get_clauses().iter().enumerate() {
 			// add clause to not lose information
@@ -91,11 +96,11 @@ impl Graph<usize> for DualGraph {
 				let var = var.abs() as usize - 1 ;
 				// connect clause to all clauses that we already know contain var
 				for clause in &var_sets[var] {
-					edges[*clause].insert(i);
 					edges[i].insert(*clause);
+					edges[*clause].insert(i);
 				}
 				// add clause to set of clauses containing var
-				var_sets[var as usize].insert(i);
+				var_sets[var].insert(i);
 			}
 		}
 
@@ -139,8 +144,8 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 	}
 
 	fn from_formula(f: Formula) -> Self {
-		let mut edges: Vec<MetroHashSet<usize>> = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut weights: Vec<usize> = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut edges   = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut weights = Vec::with_capacity(f.get_parameters().n_clauses);
 
 		for (weight, vars) in f.get_clauses().iter() {
 			let variables = vars.clone().into_iter().map(|i| i.abs() as usize);
