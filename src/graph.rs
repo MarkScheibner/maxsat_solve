@@ -14,6 +14,7 @@ pub trait Graph<T> {
 	fn size(&self)                       -> usize;
 }
 
+#[derive(Debug)]
 pub struct PrimalGraph {
 	size:     usize,
 	_clauses: Vec<WeightedClauseSet>,
@@ -74,6 +75,7 @@ impl Graph<usize> for PrimalGraph {
 	}
 }
 
+#[derive(Debug)]
 pub struct DualGraph {
 	size: usize,
 	_clauses: Vec<WeightedClauseSet>,
@@ -135,11 +137,12 @@ impl Graph<usize> for DualGraph {
 	}
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub enum IncidenceGraphNode {
 	Clause(usize),
 	Variable(usize)
 }
+#[derive(Debug)]
 pub struct IncidenceGraph {
 	size: usize,
 	edges: Vec<MetroHashSet<usize>>,
