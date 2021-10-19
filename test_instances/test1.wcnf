@@ -1,0 +1,7 @@
+c Primal:    |E| = 5
+c Dual:      |E| = 1
+c Incidence: |E| = 8
+p wcnf 6 3 1
+1 1 2 3 0
+1 2 3 4 0
+1 5 6 0
