@@ -60,7 +60,7 @@ impl Graph<usize> for PrimalGraph {
 
 	fn list_edges(&self) -> Vec<Edge<usize>> {
 		// build edges from each neighborhood set
-		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten();
+		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i+1, *v))).flatten();
 		// only list edges in one direction
 		edge_iter.filter(|(a, b)| a < b).collect()
 	}
