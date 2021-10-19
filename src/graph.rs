@@ -4,7 +4,7 @@ use std::iter::FromIterator;
 use std::iter::Iterator;
 
 type Edge<T> = (T, T);
-type WeightedClauseSet = (u32, HashSet<i32>);
+type WeightedClauseSet = (usize, HashSet<isize>);
 
 pub trait Graph<T> {
 	fn edge(&self, node1: &T, node2: &T) -> bool;
@@ -15,10 +15,10 @@ pub trait Graph<T> {
 
 pub struct PrimalGraph {
 	_clauses: Vec<WeightedClauseSet>,
-	edges: Vec<HashSet<i32>>
+	edges: Vec<HashSet<usize>>
 }
-impl Graph<i32> for PrimalGraph {
-	fn edge(&self, node1: &i32, node2: &i32) -> bool {
+impl Graph<usize> for PrimalGraph {
+	fn edge(&self, node1: &usize, node2: &usize) -> bool {
 		// an edge exists if one of the two nodes is contained in the adjacency set of the other
 		self.edges[*node1 as usize].contains(node2) || self.edges[*node2 as usize].contains(node1)
 	}
@@ -37,9 +37,9 @@ impl Graph<i32> for PrimalGraph {
 			clauses.push((*weight, HashSet::from_iter(vars.clone().into_iter())));
 			// connect all variables of the clause to each other
 			for var_a in vars {
-				let var_a = var_a.abs();
+				let var_a = var_a.abs() as usize;
 				for var_b in vars {
-					let var_b = var_b.abs();
+					let var_b = var_b.abs() as usize;
 					if var_a != var_b {
 						// variables start at 1
 						edges[var_a as usize - 1].insert(var_b);
@@ -55,35 +55,35 @@ impl Graph<i32> for PrimalGraph {
 		}
 	}
 
-	fn list_edges(&self) -> Vec<Edge<i32>> {
-		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i as i32, *v))).flatten().collect()
+	fn list_edges(&self) -> Vec<Edge<usize>> {
+		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten().collect()
 	}
 
-	fn neighborhood(&self, node: &i32) -> HashSet<i32> {
-		self.edges[*node as usize].clone()
+	fn neighborhood(&self, node: &usize) -> HashSet<usize> {
+		self.edges[*node].clone()
 	}
 }
 
 pub struct DualGraph {
 	_clauses: Vec<WeightedClauseSet>,
-	edges: Vec<HashSet<u32>>
+	edges: Vec<HashSet<usize>>
 }
-impl Graph<u32> for DualGraph {
-	fn edge(&self, node1: &u32, node2: &u32) -> bool {
-		self.edges[*node1 as usize].contains(node2) || self.edges[*node2 as usize].contains(node1)
+impl Graph<usize> for DualGraph {
+	fn edge(&self, node1: &usize, node2: &usize) -> bool {
+		self.edges[*node1].contains(node2) || self.edges[*node2].contains(node1)
 	}
 
 	fn from_formula(f: Formula) -> Self {
 		// clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
 		
-		let mut clauses: Vec<WeightedClauseSet> = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut edges : Vec<HashSet<u32>> = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut clauses = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut edges: Vec<HashSet<usize>> = Vec::with_capacity(f.get_parameters().n_clauses);
 		for _ in 0..f.get_parameters().n_clauses {
 			edges.push(HashSet::with_capacity(f.get_parameters().n_clauses));
 		}
 
 		// we need to keep track of which clauses a variable is part of
-		let mut var_sets : Vec<HashSet<u32>> = Vec::with_capacity(f.get_parameters().n_vars);
+		let mut var_sets : Vec<HashSet<usize>> = Vec::with_capacity(f.get_parameters().n_vars);
 		for _ in 0..f.get_parameters().n_vars {
 			var_sets.push(HashSet::with_capacity(f.get_parameters().n_clauses));
 		}
@@ -94,14 +94,14 @@ impl Graph<u32> for DualGraph {
 			
 			for var in vars {
 				// variables start at 1
-				let var = var.abs() - 1;
+				let var = var.abs() as usize - 1 ;
 				// connect clause to all clauses that we already know contain var
-				for clause in &var_sets[var as usize] {
-					edges[*clause as usize].insert(i as u32);
-					edges[i as usize].insert(*clause);
+				for clause in &var_sets[var] {
+					edges[*clause].insert(i);
+					edges[i].insert(*clause);
 				}
 				// add clause to set of clauses containing var
-				var_sets[var as usize].insert(i as u32);
+				var_sets[var as usize].insert(i);
 			}
 		}
 
@@ -111,23 +111,23 @@ impl Graph<u32> for DualGraph {
 		}
 	}
 
-	fn list_edges(&self) -> Vec<Edge<u32>> {
-		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i as u32, *v))).flatten().collect()
+	fn list_edges(&self) -> Vec<Edge<usize>> {
+		self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten().collect()
 	}
 
-	fn neighborhood(&self, node: &u32) -> HashSet<u32> {
-		self.edges[*node as usize].clone()
+	fn neighborhood(&self, node: &usize) -> HashSet<usize> {
+		self.edges[*node].clone()
 	}
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 pub enum IncidenceGraphNode {
-	Clause(u32),
-	Variable(i32)
+	Clause(usize),
+	Variable(usize)
 }
 pub struct IncidenceGraph {
-	edges: Vec<HashSet<i32>>,
-	_clause_weights: Vec<u32>
+	edges: Vec<HashSet<usize>>,
+	_clause_weights: Vec<usize>
 }
 impl Graph<IncidenceGraphNode> for IncidenceGraph {
 	fn edge(&self, node1: &IncidenceGraphNode, node2: &IncidenceGraphNode) -> bool {
@@ -143,11 +143,11 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 	}
 
 	fn from_formula(f: Formula) -> Self {
-		let mut edges: Vec<HashSet<i32>> = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut weights: Vec<u32> = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut edges: Vec<HashSet<usize>> = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut weights: Vec<usize> = Vec::with_capacity(f.get_parameters().n_clauses);
 
 		for (weight, vars) in f.get_clauses().iter() {
-			let variables = vars.clone().into_iter().map(|i| i.abs());
+			let variables = vars.clone().into_iter().map(|i| i.abs() as usize);
 			edges.push(HashSet::from_iter(variables));
 			weights.push(*weight);
 		}
@@ -161,19 +161,19 @@ impl Graph<IncidenceGraphNode> for IncidenceGraph {
 	fn list_edges(&self) -> Vec<Edge<IncidenceGraphNode>> {
 		use IncidenceGraphNode::*;
 		self.edges.iter().enumerate()
-		                 .map(|(i, vars)| vars.iter().map(move |v| (Clause(i as u32), Variable(*v))))
+		                 .map(|(i, vars)| vars.iter().map(move |v| (Clause(i), Variable(*v))))
 		                 .flatten().collect()
 	}
 
 	fn neighborhood(&self, node: &IncidenceGraphNode) -> HashSet<IncidenceGraphNode> {
 		use IncidenceGraphNode::*;
 		match node {
-			Clause(c) => self.edges[*c as usize].iter().map(|i| Variable(*i)).collect(),
+			Clause(c) => self.edges[*c].iter().map(|i| Variable(*i)).collect(),
 			// TODO this takes O(m)
 			Variable(v) => {
 				self.edges.iter().enumerate().filter_map(|(i, s)| {
 					if s.contains(v) {
-						Some(Clause(i as u32))
+						Some(Clause(i))
 					} else {
 						None
 					}
