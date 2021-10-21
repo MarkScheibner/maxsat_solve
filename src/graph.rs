@@ -8,7 +8,6 @@ type WeightedClauseSet = (usize, MetroHashSet<isize>);
 
 pub trait Graph {
 	fn edge(&self, node1: usize, node2: usize) -> bool;
-	fn from_formula(f: Formula)                -> Self;
 	fn list_edges(&self)                       -> Vec<Edge>;
 	fn neighborhood(&self, node: usize)        -> MetroHashSet<usize>;
 	fn size(&self)                             -> usize;
@@ -28,7 +27,25 @@ impl Graph for PrimalGraph {
 		a_to_b || b_to_a
 	}
 
-	fn from_formula(f: Formula) -> Self {
+	
+
+	fn list_edges(&self) -> Vec<Edge> {
+		// build edges from each neighborhood set
+		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i+1, *v))).flatten();
+		// only list edges in one direction
+		edge_iter.filter(|(a, b)| a < b).collect()
+	}
+
+	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
+		self.edges[node].clone()
+	}
+
+	fn size(&self) -> usize {
+		self.size
+	}
+}
+impl From<Formula> for PrimalGraph {
+	fn from(f: Formula) -> Self {
 		// variables are nodes. nodes are joined by an edge if the respective variables appear in the same clause
 		let mut clauses = Vec::with_capacity(f.get_parameters().n_clauses);
 		let mut edges   = vec![MetroHashSet::default(); f.get_parameters().n_vars];
@@ -58,21 +75,6 @@ impl Graph for PrimalGraph {
 			edges
 		}
 	}
-
-	fn list_edges(&self) -> Vec<Edge> {
-		// build edges from each neighborhood set
-		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i+1, *v))).flatten();
-		// only list edges in one direction
-		edge_iter.filter(|(a, b)| a < b).collect()
-	}
-
-	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
-		self.edges[node].clone()
-	}
-
-	fn size(&self) -> usize {
-		self.size
-	}
 }
 
 #[derive(Debug)]
@@ -89,7 +91,23 @@ impl Graph for DualGraph {
 		a_to_b || b_to_a
 	}
 
-	fn from_formula(f: Formula) -> Self {
+	fn list_edges(&self) -> Vec<Edge> {
+		// build edges from each neighborhood set
+		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten();
+		// only list edges in one direction
+		edge_iter.filter(|(a, b)| a < b).collect()
+	}
+
+	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
+		self.edges[node].clone()
+	}
+
+	fn size(&self) -> usize {
+		self.size
+	}
+}
+impl From<Formula> for DualGraph {
+	fn from(f: Formula) -> Self {
 		// clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
 		let mut clauses = Vec::with_capacity(f.get_parameters().n_clauses);
 		let mut edges   = vec![MetroHashSet::default(); f.get_parameters().n_clauses];
@@ -120,21 +138,6 @@ impl Graph for DualGraph {
 			edges
 		}
 	}
-
-	fn list_edges(&self) -> Vec<Edge> {
-		// build edges from each neighborhood set
-		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten();
-		// only list edges in one direction
-		edge_iter.filter(|(a, b)| a < b).collect()
-	}
-
-	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
-		self.edges[node].clone()
-	}
-
-	fn size(&self) -> usize {
-		self.size
-	}
 }
 
 #[derive(Debug)]
@@ -157,7 +160,24 @@ impl Graph for IncidenceGraph {
 		}
 	}
 
-	fn from_formula(f: Formula) -> Self {
+	fn list_edges(&self) -> Vec<Edge> {
+		// since there are only edges between a clause and a node, we only need the neighborhood of clauses
+		self.edges.iter().take(self.num_clauses)
+		                 .enumerate()
+		                 .map(|(i, vars)| vars.iter().map(move |v| (i, *v)))
+		                 .flatten().collect()
+	}
+
+	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
+		self.edges[node].clone()
+	}
+
+	fn size(&self) -> usize {
+		self.size
+	}
+}
+impl From<Formula> for IncidenceGraph {
+	fn from(f: Formula) -> Self {
 		let num_clauses = f.get_parameters().n_clauses;
 		let size = num_clauses + f.get_parameters().n_vars;
 		let mut edges = vec![MetroHashSet::default(); size];
@@ -176,21 +196,5 @@ impl Graph for IncidenceGraph {
 			num_clauses,
 			_clauses: clauses
 		}
-	}
-
-	fn list_edges(&self) -> Vec<Edge> {
-		// since there are only edges between a clause and a node, we only need the neighborhood of clauses
-		self.edges.iter().take(self.num_clauses)
-		                 .enumerate()
-		                 .map(|(i, vars)| vars.iter().map(move |v| (i, *v)))
-		                 .flatten().collect()
-	}
-
-	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
-		self.edges[node].clone()
-	}
-
-	fn size(&self) -> usize {
-		self.size
 	}
 }
