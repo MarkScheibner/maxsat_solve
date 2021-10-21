@@ -20,11 +20,9 @@ pub struct PrimalGraph {
 	edges:    Vec<MetroHashSet<usize>>
 }
 impl Graph for PrimalGraph {
-	fn edge(&self, node_a: usize, node_b: usize) -> bool {
-		let a_to_b = self.edges[node_a].contains(&node_b);
-		let b_to_a = self.edges[node_b].contains(&node_a);
+	fn edge(&self, u: usize, v: usize) -> bool {
 		// an edge exists if one of the two nodes is contained in the adjacency set of the other
-		a_to_b || b_to_a
+		self.edges[u].contains(&v) || self.edges[v].contains(&u)
 	}
 
 	
@@ -33,7 +31,7 @@ impl Graph for PrimalGraph {
 		// build edges from each neighborhood set
 		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i+1, *v))).flatten();
 		// only list edges in one direction
-		edge_iter.filter(|(a, b)| a < b).collect()
+		edge_iter.filter(|(u, v)| u < v).collect()
 	}
 
 	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
@@ -56,14 +54,14 @@ impl From<Formula> for PrimalGraph {
 			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
 			// connect all variables of the clause to each other
 			for var_a in vars {
-				let var_a = var_a.abs() as usize;
+				let var_a = var_a.abs() as usize -1;
 				for var_b in vars {
-					let var_b = var_b.abs() as usize;
+					let var_b = var_b.abs() as usize -1;
 					// no edges to self
 					if var_a != var_b {
 						// variables start at 1
-						edges[var_a - 1].insert(var_b);
-						edges[var_b - 1].insert(var_a);
+						edges[var_a].insert(var_b);
+						edges[var_b].insert(var_a);
 					}
 				}
 			}
@@ -84,11 +82,9 @@ pub struct DualGraph {
 	edges: Vec<MetroHashSet<usize>>
 }
 impl Graph for DualGraph {
-	fn edge(&self, node_a: usize, node_b: usize) -> bool {
-		let a_to_b = self.edges[node_a].contains(&node_b);
-		let b_to_a = self.edges[node_b].contains(&node_a);
+	fn edge(&self, u: usize, v: usize) -> bool {
 		// an edge exists if one of the two nodes is contained in the adjacency set of the other
-		a_to_b || b_to_a
+		self.edges[u].contains(&v) || self.edges[v].contains(&u)
 	}
 
 	fn list_edges(&self) -> Vec<Edge> {
@@ -148,13 +144,16 @@ pub struct IncidenceGraph {
 	_clauses: Vec<WeightedClauseSet>
 }
 impl Graph for IncidenceGraph {
-	fn edge(&self, node1: usize, node2: usize) -> bool {
+	fn edge(&self, u: usize, v: usize) -> bool {
 		// nodes that are clauses are numbered 0..num_clauses, variables are numbered num_clauses..size
 		// edges only exists between a clause and a variable
-		if node1 < self.num_clauses && node2 >= self.num_clauses {
-			self.edges[node1].contains(&node2)
-		} else if node2 < self.num_clauses && node1 >= self.num_clauses {
-			self.edges[node2].contains(&node1)
+
+		if u < self.num_clauses && v >= self.num_clauses {
+			// u is clause, v is variable
+			self.edges[u].contains(&v)
+		} else if v < self.num_clauses && u >= self.num_clauses {
+			// u is variable, v is clause
+			self.edges[v].contains(&u)
 		} else {
 			false
 		}
