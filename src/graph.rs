@@ -3,15 +3,15 @@ use metrohash::MetroHashSet;
 use std::iter::FromIterator;
 use std::iter::Iterator;
 
-type Edge<T> = (T, T);
+type Edge = (usize, usize);
 type WeightedClauseSet = (usize, MetroHashSet<isize>);
 
-pub trait Graph<T> {
-	fn edge(&self, node1: &T, node2: &T) -> bool;
-	fn from_formula(f: Formula)          -> Self;
-	fn list_edges(&self)                 -> Vec<Edge<T>>;
-	fn neighborhood(&self, node: &T)     -> MetroHashSet<T>;
-	fn size(&self)                       -> usize;
+pub trait Graph {
+	fn edge(&self, node1: usize, node2: usize) -> bool;
+	fn from_formula(f: Formula)                -> Self;
+	fn list_edges(&self)                       -> Vec<Edge>;
+	fn neighborhood(&self, node: usize)        -> MetroHashSet<usize>;
+	fn size(&self)                             -> usize;
 }
 
 #[derive(Debug)]
@@ -20,10 +20,10 @@ pub struct PrimalGraph {
 	_clauses: Vec<WeightedClauseSet>,
 	edges:    Vec<MetroHashSet<usize>>
 }
-impl Graph<usize> for PrimalGraph {
-	fn edge(&self, node_a: &usize, node_b: &usize) -> bool {
-		let a_to_b = self.edges[*node_a].contains(node_b);
-		let b_to_a = self.edges[*node_b].contains(node_a);
+impl Graph for PrimalGraph {
+	fn edge(&self, node_a: usize, node_b: usize) -> bool {
+		let a_to_b = self.edges[node_a].contains(&node_b);
+		let b_to_a = self.edges[node_b].contains(&node_a);
 		// an edge exists if one of the two nodes is contained in the adjacency set of the other
 		a_to_b || b_to_a
 	}
@@ -59,15 +59,15 @@ impl Graph<usize> for PrimalGraph {
 		}
 	}
 
-	fn list_edges(&self) -> Vec<Edge<usize>> {
+	fn list_edges(&self) -> Vec<Edge> {
 		// build edges from each neighborhood set
 		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i+1, *v))).flatten();
 		// only list edges in one direction
 		edge_iter.filter(|(a, b)| a < b).collect()
 	}
 
-	fn neighborhood(&self, node: &usize) -> MetroHashSet<usize> {
-		self.edges[*node].clone()
+	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
+		self.edges[node].clone()
 	}
 
 	fn size(&self) -> usize {
@@ -81,10 +81,10 @@ pub struct DualGraph {
 	_clauses: Vec<WeightedClauseSet>,
 	edges: Vec<MetroHashSet<usize>>
 }
-impl Graph<usize> for DualGraph {
-	fn edge(&self, node_a: &usize, node_b: &usize) -> bool {
-		let a_to_b = self.edges[*node_a].contains(node_b);
-		let b_to_a = self.edges[*node_b].contains(node_a);
+impl Graph for DualGraph {
+	fn edge(&self, node_a: usize, node_b: usize) -> bool {
+		let a_to_b = self.edges[node_a].contains(&node_b);
+		let b_to_a = self.edges[node_b].contains(&node_a);
 		// an edge exists if one of the two nodes is contained in the adjacency set of the other
 		a_to_b || b_to_a
 	}
@@ -121,15 +121,15 @@ impl Graph<usize> for DualGraph {
 		}
 	}
 
-	fn list_edges(&self) -> Vec<Edge<usize>> {
+	fn list_edges(&self) -> Vec<Edge> {
 		// build edges from each neighborhood set
 		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten();
 		// only list edges in one direction
 		edge_iter.filter(|(a, b)| a < b).collect()
 	}
 
-	fn neighborhood(&self, node: &usize) -> MetroHashSet<usize> {
-		self.edges[*node].clone()
+	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
+		self.edges[node].clone()
 	}
 
 	fn size(&self) -> usize {
@@ -137,69 +137,57 @@ impl Graph<usize> for DualGraph {
 	}
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
-pub enum IncidenceGraphNode {
-	Clause(usize),
-	Variable(usize)
-}
 #[derive(Debug)]
 pub struct IncidenceGraph {
 	size: usize,
 	edges: Vec<MetroHashSet<usize>>,
-	_clause_weights: Vec<usize>
+	num_clauses: usize,
+	_clauses: Vec<WeightedClauseSet>
 }
-impl Graph<IncidenceGraphNode> for IncidenceGraph {
-	fn edge(&self, node1: &IncidenceGraphNode, node2: &IncidenceGraphNode) -> bool {
-		use IncidenceGraphNode::*;
-
-		match (node1, node2) {
-			// only clauses and variables are connected
-			(Clause(a), Variable(b)) |
-			(Variable(b), Clause(a))   => self.edges[*a as usize].contains(b),
-			// there are no clause -> clause or variable -> variable edges
-			_ => false
+impl Graph for IncidenceGraph {
+	fn edge(&self, node1: usize, node2: usize) -> bool {
+		// nodes that are clauses are numbered 0..num_clauses, variables are numbered num_clauses..size
+		// edges only exists between a clause and a variable
+		if node1 < self.num_clauses && node2 >= self.num_clauses {
+			self.edges[node1].contains(&node2)
+		} else if node2 < self.num_clauses && node1 >= self.num_clauses {
+			self.edges[node2].contains(&node1)
+		} else {
+			false
 		}
 	}
 
 	fn from_formula(f: Formula) -> Self {
-		let mut edges   = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut weights = Vec::with_capacity(f.get_parameters().n_clauses);
+		let num_clauses = f.get_parameters().n_clauses;
+		let size = num_clauses + f.get_parameters().n_vars;
+		let mut edges = vec![MetroHashSet::default(); size];
+		let mut clauses = Vec::with_capacity(f.get_parameters().n_clauses);
 
-		for (weight, vars) in f.get_clauses().iter() {
-			let variables = vars.clone().into_iter().map(|i| i.abs() as usize);
-			edges.push(MetroHashSet::from_iter(variables));
-			weights.push(*weight);
+		for (i, (weight, vars)) in f.get_clauses().iter().enumerate() {
+			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
+			let var_nodes = vars.clone().into_iter().map(|i| i.abs() as usize + num_clauses - 1);
+			// insert variables into neighborhood of clause and clause into neighborhood of variables
+			var_nodes.for_each(|v| { edges[i].insert(v); edges[v].insert(i); });
 		}
 
 		IncidenceGraph {
-			size: f.get_parameters().n_clauses + f.get_parameters().n_vars,
+			size,
 			edges,
-			_clause_weights: weights
+			num_clauses,
+			_clauses: clauses
 		}
 	}
 
-	fn list_edges(&self) -> Vec<Edge<IncidenceGraphNode>> {
-		use IncidenceGraphNode::*;
-		self.edges.iter().enumerate()
-		                 .map(|(i, vars)| vars.iter().map(move |v| (Clause(i), Variable(*v))))
+	fn list_edges(&self) -> Vec<Edge> {
+		// since there are only edges between a clause and a node, we only need the neighborhood of clauses
+		self.edges.iter().take(self.num_clauses)
+		                 .enumerate()
+		                 .map(|(i, vars)| vars.iter().map(move |v| (i, *v)))
 		                 .flatten().collect()
 	}
 
-	fn neighborhood(&self, node: &IncidenceGraphNode) -> MetroHashSet<IncidenceGraphNode> {
-		use IncidenceGraphNode::*;
-		match node {
-			Clause(c) => self.edges[*c].iter().map(|i| Variable(*i)).collect(),
-			// TODO this takes O(m)
-			Variable(v) => {
-				self.edges.iter().enumerate().filter_map(|(i, s)| {
-					if s.contains(v) {
-						Some(Clause(i))
-					} else {
-						None
-					}
-				}).collect()
-			}
-		}
+	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
+		self.edges[node].clone()
 	}
 
 	fn size(&self) -> usize {
