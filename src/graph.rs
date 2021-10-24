@@ -25,11 +25,9 @@ impl Graph for PrimalGraph {
 		self.edges[u].contains(&v) || self.edges[v].contains(&u)
 	}
 
-	
-
 	fn list_edges(&self) -> Vec<Edge> {
 		// build edges from each neighborhood set
-		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i+1, *v))).flatten();
+		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten();
 		// only list edges in one direction
 		edge_iter.filter(|(u, v)| u < v).collect()
 	}
@@ -54,6 +52,7 @@ impl From<Formula> for PrimalGraph {
 			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
 			// connect all variables of the clause to each other
 			for var_a in vars {
+				// variables start at 1
 				let var_a = var_a.abs() as usize -1;
 				for var_b in vars {
 					let var_b = var_b.abs() as usize -1;
