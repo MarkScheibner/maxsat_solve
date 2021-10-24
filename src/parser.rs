@@ -41,6 +41,44 @@ impl Formula {
 		formula
 	}
 
+	pub fn unit_propagation(&mut self) {
+		// TODO rename variables of clause when variable is removed
+		
+		loop {
+			// find hard unit-clauses
+			// TODO find out if we can do something similar for soft clauses
+			let mut single: Vec<_> = self.clauses.iter().enumerate()
+			                                     .filter(|(_, (w, c))| *w == self.parameters.top && c.len() == 1)
+			                                     .map(|(i, (_, c))| (i, c[0]))
+			                                     .collect();
+			
+			if single.is_empty() { 
+				// no unit-clauses were found, so we're done
+				break;
+			}
+			
+			// TODO find inconsistencies
+
+			// remove hard unit-clauses
+			single.reverse();
+			for (i, _) in &single {
+				self.clauses.swap_remove(*i);
+			}
+
+			// we no longer care for index of unit-clauses
+			let single: MetroHashSet<_> = single.iter().map(|(_, c)| *c).collect();
+			// retain only clauses containing none of the literals
+			self.clauses.retain(|(_, c)| !c.iter().any(|l| single.contains(l)));
+			// retain only literals whose complement is not one of the unit-clauses
+			for (_, c) in &mut self.clauses {
+				c.retain(|l| !single.contains(&-l));
+			}
+
+		}
+
+		self.parameters.n_clauses = self.clauses.len();
+	}
+
 	pub fn get_clauses(&self) -> &Vec<WeightedClause> {
 		&self.clauses
 	}
