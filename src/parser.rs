@@ -1,3 +1,5 @@
+use metrohash::MetroHashSet;
+
 type WeightedClause = (usize, Vec<isize>);
 
 pub struct Formula {
