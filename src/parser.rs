@@ -1,4 +1,5 @@
-use metrohash::MetroHashSet;
+use metrohash::{MetroHashSet, MetroHashMap};
+use itertools::Itertools;
 
 type WeightedClause = (usize, Vec<isize>);
 
@@ -43,9 +44,12 @@ impl Formula {
 		formula
 	}
 
-	pub fn unit_propagation(&mut self) {
-		// TODO rename variables of clause when variable is removed
-		
+	/// Preprocesses the formula by unit progagation. After this step the formula will contain no unit-clauses
+	/// # Returns
+	/// A vector containing the renaming and a vector containing the removed literals
+	pub fn unit_propagation(&mut self) -> (MetroHashMap<usize, usize>, Vec<isize>) {
+		let mut removed: Vec<isize> = Vec::new();
+
 		loop {
 			// find hard unit-clauses
 			// TODO find out if we can do something similar for soft clauses
@@ -67,7 +71,6 @@ impl Formula {
 				self.clauses.swap_remove(*i);
 			}
 
-			// we no longer care for index of unit-clauses
 			let single: MetroHashSet<_> = single.iter().map(|(_, c)| *c).collect();
 			// retain only clauses containing none of the literals
 			self.clauses.retain(|(_, c)| !c.iter().any(|l| single.contains(l)));
@@ -75,10 +78,32 @@ impl Formula {
 			for (_, c) in &mut self.clauses {
 				c.retain(|l| !single.contains(&-l));
 			}
+			
+			single.iter().for_each(|l| removed.push(*l));
 
 		}
+		
+		// calculate renaming: list variables and rename based on order
+		let renaming: MetroHashMap<usize, usize> = self.clauses.iter()
+		                                                       .map(|(_, c)| c).flatten()
+		                                                       .map(|l| l.abs() as usize)
+		                                                       .unique()
+		                                                       .enumerate()
+		                                                       .map(|(k, v)| (v, k+1))
+		                                                       .collect();
+		for (_, clause) in self.clauses.iter_mut() {
+			// apply renaming
+			for literal in clause {
+				let literal_var = literal.abs() as usize;
+				let renamed_var = renaming[&literal_var] as isize;
+				*literal = literal.signum() * renamed_var;
+			}
+		}
 
+		self.parameters.n_vars = renaming.len();
 		self.parameters.n_clauses = self.clauses.len();
+		
+		(renaming, removed)
 	}
 
 	pub fn get_clauses(&self) -> &Vec<WeightedClause> {
