@@ -2,6 +2,7 @@ use crate::parser::Formula;
 use metrohash::MetroHashSet;
 use std::iter::FromIterator;
 use std::iter::Iterator;
+use union_find::*;
 
 type Edge = (usize, usize);
 type WeightedClauseSet = (usize, MetroHashSet<isize>);
@@ -11,6 +12,25 @@ pub trait Graph {
 	fn list_edges(&self)                       -> Vec<Edge>;
 	fn neighborhood(&self, node: usize)        -> MetroHashSet<usize>;
 	fn size(&self)                             -> usize;
+}
+
+pub fn connected_components(graph: &impl Graph) -> Vec<Vec<usize>> {
+	// find components with union find
+	let mut components_uf: QuickUnionUf<UnionBySize> = UnionFind::new(graph.size());
+	for u in 0..graph.size() {
+		for v in graph.neighborhood(u) {
+			components_uf.union(u, v);
+		}
+	}
+
+
+	let mut components = vec![Vec::new(); graph.size()];
+	for u in 0..graph.size() {
+		components[components_uf.find(u)].push(u);
+	}
+
+	components.retain(|c| c.len() > 1);
+	components
 }
 
 #[derive(Debug)]
