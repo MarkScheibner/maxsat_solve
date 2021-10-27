@@ -144,18 +144,8 @@ pub struct IncidenceGraph {
 }
 impl Graph for IncidenceGraph {
 	fn edge(&self, u: usize, v: usize) -> bool {
-		// nodes that are clauses are numbered 0..num_clauses, variables are numbered num_clauses..size
-		// edges only exists between a clause and a variable
-
-		if u < self.num_clauses && v >= self.num_clauses {
-			// u is clause, v is variable
-			self.edges[u].contains(&v)
-		} else if v < self.num_clauses && u >= self.num_clauses {
-			// u is variable, v is clause
-			self.edges[v].contains(&u)
-		} else {
-			false
-		}
+		self.edges[u].contains(&v) || self.edges[v].contains(&u)
+		
 	}
 
 	fn list_edges(&self) -> Vec<Edge> {
