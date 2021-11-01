@@ -5,25 +5,39 @@ use crate::graph::{DualGraph, connected_components};
 type WeightedClause = (usize, Vec<isize>);
 type Renaming = MetroHashMap<usize, usize>;
 
+#[derive(Debug)]
 pub struct Formula {
 	clauses: Vec<WeightedClause>,
 	parameters: Parameters
 }
 
+#[derive(Debug)]
 pub struct Parameters {
 	pub n_vars: usize,
 	pub n_clauses: usize,
 	pub top: usize
 }
 
-fn compute_renaming(clauses: &[WeightedClause]) -> Renaming {
-	clauses.iter()
-	       .map(|(_, c)| c).flatten()
-	       .map(|l| l.abs() as usize)
-	       .unique()
-	       .enumerate()
-	       .map(|(k, v)| (v, k+1))
-	       .collect()
+/// Computes and applies a renaming so that variable names are in 0..n again
+fn compute_renaming(clauses: &mut [WeightedClause]) -> Renaming {
+	let renaming: Renaming = clauses.iter()
+	                                .map(|(_, c)| c).flatten()
+	                                .map(|l| l.abs() as usize)
+	                                .unique()
+	                                .enumerate()
+	                                .map(|(k, v)| (v, k+1))
+	                                .collect();
+	
+	for (_, clause) in clauses.iter_mut() {
+		// apply renaming
+		for literal in clause {
+			let literal_var = literal.abs() as usize;
+			let renamed_var = renaming[&literal_var] as isize;
+			*literal = literal.signum() * renamed_var;
+		}
+	}
+
+	renaming
 }
 
 impl Formula {
@@ -66,15 +80,7 @@ impl Formula {
 		}
 		
 		// calculate renaming: list variables and rename based on order
-		let renaming = compute_renaming(&self.clauses);
-		for (_, clause) in self.clauses.iter_mut() {
-			// apply renaming
-			for literal in clause {
-				let literal_var = literal.abs() as usize;
-				let renamed_var = renaming[&literal_var] as isize;
-				*literal = literal.signum() * renamed_var;
-			}
-		}
+		let renaming = compute_renaming(&mut self.clauses);
 
 		self.parameters.n_vars = renaming.len();
 		self.parameters.n_clauses = self.clauses.len();
@@ -95,10 +101,10 @@ impl Formula {
 
 		// decompose into subformulas based on components
 		for component in components {
-			let component_clauses: Vec<_> = component.iter().map(|c| clauses[*c].clone()).collect();
+			let mut component_clauses: Vec<_> = component.iter().map(|c| clauses[*c].clone()).collect();
 			let n_clauses = component_clauses.len();
 
-			let renaming = compute_renaming(&component_clauses);
+			let renaming = compute_renaming(&mut component_clauses);
 			let n_vars = renaming.len();
 
 			formulae.push(Formula {
