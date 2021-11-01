@@ -13,14 +13,14 @@ use rand::{ rngs::StdRng, SeedableRng, prelude::IteratorRandom };
 //
 
 /// Seed of the random number generator.
-const _SEED: u64 = 42;
+pub const SEED: u64 = 42;
 
 /// A tree decomposition is stored as (rooted) tree:
 /// Each node has a unique parent (or points to itself, if it is the root)
 /// and stores a bag. Thus, we can store the whole decomposition as array of
 /// tuples (the parent and the bag content).
 ///
-type _Decomposition = Vec<(usize, Vec<usize>)>;
+type Decomposition = Vec<(usize, Vec<usize>)>;
 
 pub struct Graph {
     pub n:         usize,                    // universe size ($V=\{0,\dots,1\}$)
@@ -104,7 +104,7 @@ impl Graph {
     /// - that the ordering was computed using @see compute_peo
     /// - that the graph is connected (otherwise this will most likely fail and return None)
     ///
-    pub fn _peo_to_decomposition(&self, ordering: &[usize]) -> Option<_Decomposition> {
+    pub fn peo_to_decomposition(&self, ordering: &[usize]) -> Option<Decomposition> {
         let mut td  = vec![(0, Vec::new()); self.n];
         
         // reverse index of ordering
@@ -197,7 +197,7 @@ fn _main() {
     println!("c maximum degree: {}", (0..g.n).map(|v| g.neighbors[v].len()).max().or(Some(0)).unwrap());
 
     // random number generator to break ties
-    let mut rng = StdRng::seed_from_u64(_SEED);
+    let mut rng = StdRng::seed_from_u64(SEED);
 
     // compute peo and tree decomposition
     let now = Instant::now();
@@ -205,7 +205,7 @@ fn _main() {
     println!("c used {} seconds compute a peo", now.elapsed().as_secs());
 
     let now = Instant::now();
-    let td    = match g._peo_to_decomposition(&peo) {
+    let td    = match g.peo_to_decomposition(&peo) {
         Some(td) => td,
         None     => {
             println!("c failed to compute tree decomposition. The graph was probably not connected!");
