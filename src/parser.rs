@@ -1,7 +1,9 @@
 use metrohash::{MetroHashSet, MetroHashMap};
 use itertools::Itertools;
+use crate::graph::{DualGraph, connected_components};
 
 type WeightedClause = (usize, Vec<isize>);
+type Renaming = MetroHashMap<usize, usize>;
 
 pub struct Formula {
 	clauses: Vec<WeightedClause>,
@@ -14,45 +16,25 @@ pub struct Parameters {
 	pub top: usize
 }
 
+fn compute_renaming(clauses: &[WeightedClause]) -> Renaming {
+	clauses.iter()
+	       .map(|(_, c)| c).flatten()
+	       .map(|l| l.abs() as usize)
+	       .unique()
+	       .enumerate()
+	       .map(|(k, v)| (v, k+1))
+	       .collect()
+}
+
 impl Formula {
-	pub fn new(input: String) -> Formula {
-		// get non comment lines
-		let mut lines = input.lines().filter(|s| { !s.starts_with('c') });
-			
-		// parse parameter line
-		let p_line = lines.next().expect("parameter line is missing in file");
-		let parameters = Parameters::parse_parameters(p_line);
-
-		// parse formula
-		let mut formula = Formula {
-			clauses: Vec::with_capacity(parameters.n_clauses),
-			parameters
-		};
-		for line in lines {
-			let mut values = line.split(' ');
-			// weight is the first element of a line
-			let weight = values.next().map(|w| w.parse::<usize>().ok()).flatten().expect("file contains empty clause");
-			// the rest are the claus
-			let values = values.map(|s| s.parse::<isize>().expect("file contains malformed clause"));
-			let mut clause: Vec<isize> = values.collect();
-			// except for the last item, which is always 0
-			clause.remove(clause.len() - 1);
-			
-			formula.clauses.push((weight, clause))
-		}
-
-		formula
-	}
-
 	/// Preprocesses the formula by unit progagation. After this step the formula will contain no unit-clauses
 	/// # Returns
 	/// A vector containing the renaming and a vector containing the removed literals
-	pub fn unit_propagation(&mut self) -> (MetroHashMap<usize, usize>, Vec<isize>) {
+	pub fn unit_propagation(&mut self) -> (Renaming, Vec<isize>) {
 		let mut removed: Vec<isize> = Vec::new();
 
 		loop {
 			// find hard unit-clauses
-			// TODO find out if we can do something similar for soft clauses
 			let mut single: Vec<_> = self.clauses.iter().enumerate()
 			                                     .filter(|(_, (w, c))| *w == self.parameters.top && c.len() == 1)
 			                                     .map(|(i, (_, c))| (i, c[0]))
@@ -84,13 +66,7 @@ impl Formula {
 		}
 		
 		// calculate renaming: list variables and rename based on order
-		let renaming: MetroHashMap<usize, usize> = self.clauses.iter()
-		                                                       .map(|(_, c)| c).flatten()
-		                                                       .map(|l| l.abs() as usize)
-		                                                       .unique()
-		                                                       .enumerate()
-		                                                       .map(|(k, v)| (v, k+1))
-		                                                       .collect();
+		let renaming = compute_renaming(&self.clauses);
 		for (_, clause) in self.clauses.iter_mut() {
 			// apply renaming
 			for literal in clause {
@@ -105,6 +81,41 @@ impl Formula {
 		
 		(renaming, removed)
 	}
+	pub fn sub_formulae(self) -> (Vec<Formula>, Vec<Renaming>) {
+		// copy some values
+		let clauses = self.clauses.clone();
+		let top = self.parameters.top;
+
+		// use dual graph to find which clauses should stay together
+		let intermediate = DualGraph::from(self);
+		let components = connected_components(&intermediate);
+
+		let mut formulae = Vec::with_capacity(components.len());
+		let mut renamings = Vec::with_capacity(components.len());
+
+		// decompose into subformulas based on components
+		for component in components {
+			let component_clauses: Vec<_> = component.iter().map(|c| clauses[*c].clone()).collect();
+			let n_clauses = component_clauses.len();
+
+			let renaming = compute_renaming(&component_clauses);
+			let n_vars = renaming.len();
+
+			formulae.push(Formula {
+				clauses: component_clauses,
+				parameters: Parameters {
+					n_vars,
+					n_clauses,
+					top
+				}
+			});
+
+			renamings.push(renaming);
+		}
+
+
+		(formulae, renamings)
+	}
 
 	pub fn get_clauses(&self) -> &Vec<WeightedClause> {
 		&self.clauses
@@ -112,6 +123,37 @@ impl Formula {
 
 	pub fn get_parameters(&self) -> &Parameters {
 		&self.parameters
+	}
+}
+
+impl From<String> for Formula {
+	fn from(input: String) -> Formula {
+		// get non comment lines
+		let mut lines = input.lines().filter(|s| { !s.starts_with('c') });
+			
+		// parse parameter line
+		let p_line = lines.next().expect("parameter line is missing in file");
+		let parameters = Parameters::parse_parameters(p_line);
+
+		// parse formula
+		let mut formula = Formula {
+			clauses: Vec::with_capacity(parameters.n_clauses),
+			parameters
+		};
+		for line in lines {
+			let mut values = line.split(' ');
+			// weight is the first element of a line
+			let weight = values.next().map(|w| w.parse::<usize>().ok()).flatten().expect("file contains empty clause");
+			// the rest are the claus
+			let values = values.map(|s| s.parse::<isize>().expect("file contains malformed clause"));
+			let mut clause: Vec<isize> = values.collect();
+			// except for the last item, which is always 0
+			clause.remove(clause.len() - 1);
+			
+			formula.clauses.push((weight, clause))
+		}
+
+		formula
 	}
 }
 
