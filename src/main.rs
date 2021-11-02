@@ -58,7 +58,8 @@ fn main() -> anyhow::Result<()>{
 
 	if min_deg > 100 || nodes * 100 < edges {
 		// don't even bother
-		std::process::exit(0);
+		println!("{}, {}, {}, {}, {}, {}, {}", nodes, edges, components, max_deg, min_deg, size_reduction, -1);
+		std::process::exit(1);
 	}
 	
 	for graph in graphs {
