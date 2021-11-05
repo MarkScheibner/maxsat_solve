@@ -45,20 +45,23 @@ fn main() -> anyhow::Result<()>{
 	}).collect();
 	
 	// some useful values
-	let nodes       = graphs.iter().fold(0, |c_nodes, g| c_nodes +  g.size());
-	let edges       = graphs.iter().fold(0, |c_edges, g| c_edges + g.list_edges().len());
+	let nodes       = graphs.iter().map(|g| g.size()).collect::<Vec<_>>();
+	let edges       = graphs.iter().map(|g| g.edge_count()).collect::<Vec<_>>();
+	let num_nodes   = nodes.iter().sum::<usize>();
+	let num_edges   = edges.iter().sum::<usize>();
 	let components  = graphs.len();
-	let mut max_deg = 0;
-	let mut min_deg = usize::MAX;
 	let mut tw      = 0;
-	for graph in &graphs {
-		max_deg = (0..graph.size()).map(|i| graph.neighborhood(i).len()).fold(max_deg, |c_max, d| d.max(c_max));
-		min_deg = (0..graph.size()).map(|i| graph.neighborhood(i).len()).fold(min_deg, |c_min, d| d.min(c_min));
-	}
+	let degrees     = graphs.iter().map(|g| {
+		let max_deg = (0..g.size()).map(|i| g.degree(i)).fold(0,          |c_max, d| d.max(c_max));
+		let min_deg = (0..g.size()).map(|i| g.degree(i)).fold(usize::MAX, |c_min, d| d.min(c_min));
+		(min_deg, max_deg)
+	}).collect::<Vec<_>>();
+	let g_max_deg   = degrees.iter().fold(0,          |c_max, &(_, max)| c_max.max(max));
+	let g_min_deg   = degrees.iter().fold(usize::MAX, |c_min, &(min, _)| c_min.min(min));
 
-	if min_deg > 100 || nodes * 100 < edges {
+	if degrees.iter().any(|&(min, _)| min > 100) || nodes.iter().zip(edges).any(|(v, e)| v * 100 > e) {
 		// don't even bother
-		println!("{}, {}, {}, {}, {}, {}, {}", nodes, edges, components, max_deg, min_deg, size_reduction, -1);
+		println!("{}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, size_reduction, -1);
 		std::process::exit(1);
 	}
 	
@@ -74,6 +77,6 @@ fn main() -> anyhow::Result<()>{
 		// TODO do cool stuff with decomposition
 	}
 
-	println!("{}, {}, {}, {}, {}, {}, {}", nodes, edges, components, max_deg, min_deg, size_reduction, tw);
+	println!("{}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, size_reduction, tw);
 	Ok(())
 }
