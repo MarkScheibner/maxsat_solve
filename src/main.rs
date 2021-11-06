@@ -32,10 +32,10 @@ fn main() -> anyhow::Result<()>{
 	// split formula
 	let (sub_formulae, _renamings) = formula.sub_formulae();
 	
-	// create graphs from each sub-formula
 	let primal = args.contains("-p") || args.contains("--primal");
-	let dual = args.contains("-d") || args.contains("--dual");
-	let _incidence = args.contains("-i") || args.contains("--incidence");
+	let dual   = args.contains("-d") || args.contains("--dual");
+	
+	// create graphs from each sub-formula
 	let graphs: Vec<_> = sub_formulae.into_iter().map(|f| if primal {
 		Box::new(graph::PrimalGraph::from(f)) as Box<dyn graph::Graph>
 	} else if dual {
@@ -58,10 +58,11 @@ fn main() -> anyhow::Result<()>{
 	}).collect::<Vec<_>>();
 	let g_max_deg   = degrees.iter().fold(0,          |c_max, &(_, max)| c_max.max(max));
 	let g_min_deg   = degrees.iter().fold(usize::MAX, |c_min, &(min, _)| c_min.min(min));
+	let max_min_deg = degrees.iter().map(|&(min, _)| min).max().unwrap();
 
 	if degrees.iter().any(|&(min, _)| min > 100) || nodes.iter().zip(edges).any(|(v, e)| v * 100 > e) {
 		// don't even bother
-		println!("{}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, size_reduction, -1);
+		println!("{}, {}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, max_min_deg, size_reduction, -1);
 		std::process::exit(1);
 	}
 	
@@ -77,6 +78,6 @@ fn main() -> anyhow::Result<()>{
 		// TODO do cool stuff with decomposition
 	}
 
-	println!("{}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, size_reduction, tw);
+	println!("{}, {}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, max_min_deg, size_reduction, tw);
 	Ok(())
 }
