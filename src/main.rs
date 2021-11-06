@@ -60,7 +60,8 @@ fn main() -> anyhow::Result<()>{
 	let g_min_deg   = degrees.iter().fold(usize::MAX, |c_min, &(min, _)| c_min.min(min));
 	let max_min_deg = degrees.iter().map(|&(min, _)| min).max().unwrap();
 
-	if degrees.iter().any(|&(min, _)| min > 100) || nodes.iter().zip(edges).any(|(v, e)| v * 100 > e) {
+	// see if we should even bother. mindeg and e/v are lower bounds for treewidth.
+	if degrees.iter().any(|&(min, _)| min > 100) || nodes.iter().zip(&edges).any(|(v, e)| v * 100 < *e) {
 		// don't even bother
 		println!("{}, {}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, max_min_deg, size_reduction, -1);
 		std::process::exit(1);
