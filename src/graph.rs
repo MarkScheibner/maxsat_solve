@@ -3,10 +3,13 @@ use metrohash::MetroHashSet;
 use std::iter::FromIterator;
 use std::iter::Iterator;
 use union_find::*;
+use ambassador::{delegatable_trait, Delegate};
 
 type Edge = (usize, usize);
+type IncidenceList = Vec<MetroHashSet<usize>>;
 type WeightedClauseSet = (usize, MetroHashSet<isize>);
 
+#[delegatable_trait]
 pub trait Graph {
 	fn edge(&self, node1: usize, node2: usize) -> bool;
 	fn list_edges(&self)                       -> Vec<Edge>;
@@ -16,36 +19,15 @@ pub trait Graph {
 	fn edge_count(&self)                       -> usize;
 }
 
-pub fn connected_components(graph: &impl Graph) -> Vec<Vec<usize>> {
-	// find components with union find
-	let mut components_uf: QuickUnionUf<UnionBySize> = UnionFind::new(graph.size());
-	for u in 0..graph.size() {
-		for v in graph.neighborhood(u) {
-			components_uf.union(u, v);
-		}
-	}
-
-
-	let mut components = vec![Vec::new(); graph.size()];
-	for u in 0..graph.size() {
-		components[components_uf.find(u)].push(u);
-	}
-
-	components.retain(|c| c.len() > 1);
-	components
-}
-
 #[derive(Debug)]
-pub struct PrimalGraph {
+struct UndirectedGraph {
 	size:       usize,
-	_clauses:   Vec<WeightedClauseSet>,
-	edges:      Vec<MetroHashSet<usize>>,
-	edge_count: usize
+	edge_count: usize,
+	edges:      IncidenceList
 }
-impl Graph for PrimalGraph {
+impl Graph for UndirectedGraph {
 	fn edge(&self, u: usize, v: usize) -> bool {
-		// an edge exists if one of the two nodes is contained in the adjacency set of the other
-		self.edges[u].contains(&v) || self.edges[v].contains(&u)
+		self.edges[u].contains(&v)
 	}
 
 	fn list_edges(&self) -> Vec<Edge> {
@@ -71,7 +53,50 @@ impl Graph for PrimalGraph {
 		self.edge_count
 	}
 }
-impl From<Formula> for PrimalGraph {
+
+#[derive(Debug)]
+struct DirectedGraph {
+	size:        usize,
+	edge_count:  usize,
+	successor:   IncidenceList,
+	predecessor: IncidenceList
+}
+impl Graph for DirectedGraph {
+	fn edge(&self, u: usize, v: usize) -> bool {
+		// edges go only in one direction, so v has to be a successor to u
+		self.successor[u].contains(&v)
+	}
+
+	fn list_edges(&self) -> Vec<Edge> {
+		// edges go only form nodes to their successors
+		self.successor.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten().collect()
+	}
+
+	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
+		// TODO this might take O(n), which is ok, as long as we iterate the whole neighborhood
+		self.successor[node].union(&self.predecessor[node]).copied().collect()
+	}
+
+	fn degree(&self, node: usize) -> usize {
+		self.successor[node].len() + self.predecessor[node].len()
+	}
+
+	fn size(&self) -> usize {
+		self.size
+	}
+
+	fn edge_count(&self) -> usize {
+		self.edge_count
+	}
+}
+
+#[derive(Debug, Delegate)]
+#[delegate(Graph, target="inner")]
+pub struct Primal {
+	inner:    UndirectedGraph,
+	_clauses: Vec<WeightedClauseSet>
+}
+impl From<Formula> for Primal {
 	fn from(f: Formula) -> Self {
 		// variables are nodes. nodes are joined by an edge if the respective variables appear in the same clause
 		let mut clauses    = Vec::with_capacity(f.get_parameters().n_clauses);
@@ -99,52 +124,24 @@ impl From<Formula> for PrimalGraph {
 			}
 		}
 
-		PrimalGraph{
-			size: f.get_parameters().n_vars,
-			_clauses: clauses,
-			edges,
-			edge_count
+		Primal {
+			inner: UndirectedGraph {
+				size: f.get_parameters().n_vars,
+				edge_count,
+				edges
+			},
+			_clauses: clauses
 		}
 	}
 }
 
-#[derive(Debug)]
-pub struct DualGraph {
-	size:       usize,
-	_clauses:   Vec<WeightedClauseSet>,
-	edges:      Vec<MetroHashSet<usize>>,
-	edge_count: usize
+#[derive(Debug, Delegate)]
+#[delegate(Graph, target="inner")]
+pub struct Dual {
+	inner:    UndirectedGraph,
+	_clauses: Vec<WeightedClauseSet>
 }
-impl Graph for DualGraph {
-	fn edge(&self, u: usize, v: usize) -> bool {
-		// an edge exists if one of the two nodes is contained in the adjacency set of the other
-		self.edges[u].contains(&v) || self.edges[v].contains(&u)
-	}
-
-	fn list_edges(&self) -> Vec<Edge> {
-		// build edges from each neighborhood set
-		let edge_iter = self.edges.iter().enumerate().map(|(i, s)| s.iter().map(move |v| (i, *v))).flatten();
-		// only list edges in one direction
-		edge_iter.filter(|(a, b)| a < b).collect()
-	}
-
-	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
-		self.edges[node].clone()
-	}
-
-	fn degree(&self, node: usize) -> usize {
-		self.edges[node].len()
-	}
-
-	fn size(&self) -> usize {
-		self.size
-	}
-
-	fn edge_count(&self) -> usize {
-		self.edge_count
-	}
-}
-impl From<Formula> for DualGraph {
+impl From<Formula> for Dual {
 	fn from(f: Formula) -> Self {
 		// clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
 		let mut clauses    = Vec::with_capacity(f.get_parameters().n_clauses);
@@ -162,6 +159,7 @@ impl From<Formula> for DualGraph {
 				// variables start at 1
 				let var = var.abs() as usize - 1 ;
 				// connect clause to all clauses that we already know contain var
+				// TODO move this
 				for clause in &var_sets[var] {
 					edge_count += 1;
 					edges[i].insert(*clause);
@@ -172,74 +170,79 @@ impl From<Formula> for DualGraph {
 			}
 		}
 
-		DualGraph{
-			size: f.get_parameters().n_clauses,
-			_clauses: clauses,
-			edges,
-			edge_count
+		Dual {
+			inner: UndirectedGraph {
+				size: f.get_parameters().n_clauses,
+				edges,
+				edge_count
+			},
+			_clauses: clauses
 		}
 	}
 }
 
-#[derive(Debug)]
-pub struct IncidenceGraph {
-	size:        usize,
-	edges:       Vec<MetroHashSet<usize>>,
-	num_clauses: usize,
-	_clauses:    Vec<WeightedClauseSet>,
-	edge_count:  usize
+#[derive(Debug, Delegate)]
+#[delegate(Graph, target="inner")]
+pub struct Incidence {
+	inner:    DirectedGraph,
+	_clauses: Vec<WeightedClauseSet>
 }
-impl Graph for IncidenceGraph {
-	fn edge(&self, u: usize, v: usize) -> bool {
-		self.edges[u].contains(&v) || self.edges[v].contains(&u)
-		
-	}
-
-	fn list_edges(&self) -> Vec<Edge> {
-		// since there are only edges between a clause and a node, we only need the neighborhood of clauses
-		self.edges.iter().take(self.num_clauses)
-		                 .enumerate()
-		                 .map(|(i, vars)| vars.iter().map(move |v| (i, *v)))
-		                 .flatten().collect()
-	}
-
-	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
-		self.edges[node].clone()
-	}
-
-	fn degree(&self, node: usize) -> usize {
-		self.edges[node].len()
-	}
-
-	fn size(&self) -> usize {
-		self.size
-	}
-
-	fn edge_count(&self) -> usize {
-		self.edge_count
-	}
-}
-impl From<Formula> for IncidenceGraph {
+impl From<Formula> for Incidence {
 	fn from(f: Formula) -> Self {
-		let num_clauses    = f.get_parameters().n_clauses;
-		let size           = num_clauses + f.get_parameters().n_vars;
-		let mut edges      = vec![MetroHashSet::default(); size];
-		let mut clauses    = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut edge_count = 0;
+		let num_clauses     = f.get_parameters().n_clauses;
+		let size            = num_clauses + f.get_parameters().n_vars;
+		let mut predecessor = vec![MetroHashSet::default(); size];
+		let mut successor   = vec![MetroHashSet::default(); size];
+		let mut clauses     = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut edge_count  = 0;
 
-		for (i, (weight, vars)) in f.get_clauses().iter().enumerate() {
+		for (c, (weight, vars)) in f.get_clauses().iter().enumerate() {
 			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
-			let var_nodes = vars.iter().map(|i| i.abs() as usize + num_clauses - 1);
 			// insert variables into neighborhood of clause and clause into neighborhood of variables
-			var_nodes.for_each(|v| { edges[i].insert(v); edges[v].insert(i); edge_count += 1; });
+			for &var in vars {
+				// the node of the variable
+				let var_node = var.abs() as usize + num_clauses -1;
+				// determine direction of edge
+				if var < 0 {
+					// positive literal: edge goes from clause to variable
+					successor[c].insert(var_node);
+					predecessor[var_node].insert(c);
+				} else {
+					// negative literal: edge goes from variable to clause
+					successor[var_node].insert(c);
+					predecessor[c].insert(var_node);
+				}
+				edge_count += 1;
+			}
 		}
 
-		IncidenceGraph {
-			size,
-			edges,
-			num_clauses,
-			_clauses: clauses,
-			edge_count
+		Incidence {
+			inner: DirectedGraph {
+				size,
+				successor,
+				predecessor,
+				edge_count
+			},
+			_clauses: clauses
 		}
 	}
+}
+
+pub fn connected_components(graph: &impl Graph) -> Vec<Vec<usize>> {
+	// find components with union find
+	let mut components_uf: QuickUnionUf<UnionBySize> = UnionFind::new(graph.size());
+	for u in 0..graph.size() {
+		for v in graph.neighborhood(u) {
+			components_uf.union(u, v);
+		}
+	}
+
+
+	let mut components = vec![Vec::new(); graph.size()];
+	for u in 0..graph.size() {
+		components[components_uf.find(u)].push(u);
+	}
+
+	components.retain(|c| c.len() > 1);
+	components
 }

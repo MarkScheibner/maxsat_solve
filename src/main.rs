@@ -37,11 +37,11 @@ fn main() -> anyhow::Result<()>{
 	
 	// create graphs from each sub-formula
 	let graphs: Vec<_> = sub_formulae.into_iter().map(|f| if primal {
-		Box::new(graph::PrimalGraph::from(f)) as Box<dyn graph::Graph>
+		Box::new(graph::Primal::from(f)) as Box<dyn graph::Graph>
 	} else if dual {
-		Box::new(graph::DualGraph::from(f)) as Box<dyn graph::Graph>
+		Box::new(graph::Dual::from(f)) as Box<dyn graph::Graph>
 	} else  {
-		Box::new(graph::IncidenceGraph::from(f)) as Box<dyn graph::Graph>
+		Box::new(graph::Incidence::from(f)) as Box<dyn graph::Graph>
 	}).collect();
 	
 	// some useful values

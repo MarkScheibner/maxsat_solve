@@ -10,6 +10,7 @@ pico-args = "*"
 flate2 = "*"
 metrohash = "*"
 union-find ="*"
+ambassador = "*"
 
 anyhow = "1.0"
 bit-set = "0.5.1"
