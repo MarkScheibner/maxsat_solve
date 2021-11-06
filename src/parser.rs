@@ -1,6 +1,6 @@
 use metrohash::{MetroHashSet, MetroHashMap};
 use itertools::Itertools;
-use crate::graph::{DualGraph, connected_components};
+use crate::graph::{Dual, connected_components};
 
 type WeightedClause = (usize, Vec<isize>);
 type Renaming = MetroHashMap<usize, usize>;
@@ -93,7 +93,7 @@ impl Formula {
 		let top = self.parameters.top;
 
 		// use dual graph to find which clauses should stay together
-		let intermediate = DualGraph::from(self);
+		let intermediate = Dual::from(self);
 		let components = connected_components(&intermediate);
 
 		let mut formulae = Vec::with_capacity(components.len());
