@@ -58,7 +58,7 @@ fn main() -> anyhow::Result<()>{
 	}).collect::<Vec<_>>();
 	let g_max_deg   = degrees.iter().fold(0,          |c_max, &(_, max)| c_max.max(max));
 	let g_min_deg   = degrees.iter().fold(usize::MAX, |c_min, &(min, _)| c_min.min(min));
-	let max_min_deg = degrees.iter().map(|&(min, _)| min).max().unwrap();
+	let max_min_deg = degrees.iter().map(|&(min, _)| min).max().unwrap_or(0);
 
 	// see if we should even bother. mindeg and e/v are lower bounds for treewidth.
 	if degrees.iter().any(|&(min, _)| min > 100) || nodes.iter().zip(&edges).any(|(v, e)| v * 100 < *e) {
