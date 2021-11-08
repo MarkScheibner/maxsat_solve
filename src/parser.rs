@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use metrohash::{MetroHashSet, MetroHashMap};
 use itertools::Itertools;
 use crate::graph::{Dual, connected_components};
@@ -6,7 +8,7 @@ type Clause = Vec<isize>;
 type Renaming = MetroHashMap<usize, usize>;
 type PartialAssignment = Vec<Option<bool>>;
 // (still free, positive occurences, negative occurences, clauses)
-type PreprocessList = Vec<(usize, usize, Vec<usize>)>;
+type OccurenceList = Vec<(Cell<usize>, Cell<usize>, Vec<(usize, usize)>)>;
 
 #[derive(Debug)]
 pub struct Formula {
@@ -22,12 +24,13 @@ pub struct Parameters {
 	pub top: usize
 }
 
-enum PreprocessStackElement {
-	// variable, negative
+enum WorkElement {
+	// variable, positive
 	Pure(usize, bool),
 	// literal
 	Unit(isize)
 }
+type WorkStack = Vec<WorkElement>;
 
 
 /// Computes and applies a renaming so that variable names are in 0..n again
@@ -101,32 +104,91 @@ impl Formula {
 	}
 
 	pub fn preprocess(&mut self) -> (PartialAssignment, Renaming) {
-		use crate::parser::PreprocessStackElement::*;
-		let mut occurence_list: PreprocessList = vec![(0, 0, Vec::default()); self.parameters.n_vars];
+		use crate::parser::WorkElement::*;
+		let mut occurence_list = self.build_occurence_list(); // should take O(n) where n is the length of the formula
 		let mut still_free = vec![true; self.parameters.n_vars];
-		// build occurence list: for all variables find the clauses in which they occure and count their occurences
+		let mut work_stack = self.initial_stack(&mut occurence_list, &mut still_free);
+
+		let mut partial_assignment: PartialAssignment = vec![None; self.parameters.n_vars];
+		while let Some(work) = work_stack.pop() { 
+			match work {
+				Unit(literal) => {
+					let literal_index = literal.abs() as usize - 1;
+					// make the literal (not the variable) evaluate to true
+					partial_assignment[literal_index] = Some(literal > 0);
+
+					for &(var_index, clause_index) in &occurence_list[literal_index].2 {
+						let clause = &mut self.clauses[clause_index];
+						// see if clause is already gone
+						if clause.is_empty() { continue; }
+
+						// its not gone, so empty the clause or remove the negated literal
+						if clause[var_index] == literal {
+							self.clear_clause(clause_index, &occurence_list, &mut still_free, &mut work_stack);
+						} else {
+							// the clause contains the negated literal, so we only remove that
+							clause.swap_remove(var_index);
+							if clause.len() == 1 {
+								// we got a new unit clause
+								work_stack.push(Unit(clause[0]))
+							}
+							// update index of var which is now at var_index
+							// TODO
+							
+						}
+					} // O(d), where d is maximum degree of variables in formula
+				},
+				Pure(var, val) => {
+					partial_assignment[var] = Some(val);
+					// empty all clauses containing var, since setting var to pos makes them true
+					for &(_, clause_index) in &occurence_list[var].2 {
+						self.clear_clause(clause_index, &occurence_list, &mut still_free, &mut work_stack);
+					} // O(d), where d is maximum degree of variables in formula
+				}
+			} // O(v), where v is number of variables
+		}
+
+		// TODO remove all empty clauses
+
+		// rename remaining variables into 1..n
+		let renaming = compute_renaming(&mut self.clauses);
+
+		(partial_assignment, renaming)
+	}
+	fn build_occurence_list(&self) -> OccurenceList {
+		let mut occ_list = vec![(Cell::new(0), Cell::new(0), Vec::default()); self.parameters.n_vars];
+
+		// for all variables find the clauses in which they occure and count their occurences
 		for (clause_index, clause) in self.clauses.iter().enumerate() {
-			for &var in clause {
+			for (index_of_var, &var) in clause.iter().enumerate() {
 				let var_index = var.abs() as usize -1;
 				// increase count
-				if var > 0 { occurence_list[var_index].0 += 1; } else {	occurence_list[var_index].1 += 1; }
-				// add clause to list
-				// TODO also save index of variable in clause
-				occurence_list[var_index].2.push(clause_index);
+				if var > 0 {
+					occ_list[var_index].0.set(occ_list[var_index].0.get() + 1);
+				} else {
+					occ_list[var_index].1.set(occ_list[var_index].1.get() + 1);
+				}
+				// add clause to list and remember where the variable is located in that clause
+				occ_list[var_index].2.push((clause_index, index_of_var));
 			}
-		} // should take O(n) where n ist the length of the formula
+		}
 
-		let mut preprocess_stack: Vec<PreprocessStackElement> = Vec::with_capacity(self.parameters.n_vars);
+		occ_list
+	}
+	fn initial_stack(&self, occ_list: &OccurenceList, free_list: &mut Vec<bool>) -> WorkStack {
+		use crate::parser::WorkElement::*;
+
+		let mut preprocess_stack = Vec::with_capacity(self.parameters.n_vars);
 		// push all pure variables on stack
 		for i in 0..self.parameters.n_vars {
-			if occurence_list[i].0 == 0 {
-				// never occures as positive literal
+			if occ_list[i].0.get() == 0 {
+				// never occures as positive, x_i is false
 				preprocess_stack.push(Pure(i, false));
-				still_free[i] = false;
-			} else if occurence_list[i].1 == 0 {
-				// never occures as negative literal
+				free_list[i] = false;
+			} else if occ_list[i].1.get() == 0 {
+				// never occures as negative, x_i is true
 				preprocess_stack.push(Pure(i, true));
-				still_free[i] = false;
+				free_list[i] = false;
 			}
 		}
 		// push all unit literals on stack
@@ -137,36 +199,42 @@ impl Formula {
 			if clause.len() == 0 && weight == self.parameters.top {
 				let only_var = clause[0];
 				let only_var_index = only_var.abs() as usize - 1;
-				if still_free[only_var_index] {
-					// we didnt add this var as unit already
+				if free_list[only_var_index] {
+					// we didnt add this var as unit or pure already
 					preprocess_stack.push(Unit(only_var));
-					still_free[only_var_index] = false;
+					free_list[only_var_index] = false;
 				}
 			}
 		}
 
-		let mut partial_assignment: PartialAssignment = vec![None; self.parameters.n_vars];
-		while let Some(work) = preprocess_stack.pop() {
-			match work {
-				Unit(literal) => {
+		preprocess_stack
+	}
+	fn clear_clause(&mut self, clause: usize, occ_list: &OccurenceList, free_list: &mut Vec<bool>,
+		stack: &mut WorkStack) {
+		use crate::parser::WorkElement::*;
 
-				},
-				Pure(var, neg) => {
-					partial_assignment[var] = Some(!neg);
-					// empty all clauses containing var, since setting var to !neg makes them true
-					for &clause_index in &occurence_list[var].2 {
-						self.clauses[clause_index].clear();
-					}
+		for &literal in &self.clauses[clause] {
+			let literal_index = literal.abs() as usize - 1;
+			if literal > 0 {
+				// remove positive instance of variable
+				occ_list[literal_index].0.set(occ_list[literal_index].0.get() - 1);
+				if occ_list[literal_index].0.get() == 0 {
+					// we got a new pure literal (negative)
+					stack.push(Pure(literal_index, false));
+					free_list[literal_index] = false;
+				}
+			} else {
+				// remove negative instance of variable
+				occ_list[literal_index].1.set(occ_list[literal_index].1.get() - 1);
+				if occ_list[literal_index].1.get() == 0 {
+					// we got a new pure literal (positive)
+					stack.push(Pure(literal_index, true));
+					free_list[literal_index] = false;
 				}
 			}
 		}
 
-		// TODO remove all empty clauses
-
-		// rename remaining variables into 1..n
-		let renaming = compute_renaming(&mut self.clauses);
-
-		(partial_assignment, renaming)
+		self.clauses[clause].clear();
 	}
 	pub fn sub_formulae(self) -> (Vec<Formula>, Vec<Renaming>) {
 		// copy some values
