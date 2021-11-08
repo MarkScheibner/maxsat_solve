@@ -104,14 +104,14 @@ impl From<Formula> for Primal {
 		let mut edge_count = 0;
 
 		// add edges between variables of each clause
-		for (weight, vars) in f.get_clauses() {
+		for (i, clause) in f.get_clauses().iter().enumerate() {
 			// add clause to not lose information
-			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
+			clauses.push((f.get_weights()[i], MetroHashSet::from_iter(clause.clone().into_iter())));
 			// connect all variables of the clause to each other
-			for var_a in vars {
+			for var_a in clause {
 				// variables start at 1
 				let var_a = var_a.abs() as usize -1;
-				for var_b in vars {
+				for var_b in clause {
 					let var_b = var_b.abs() as usize -1;
 					// no edges to self
 					if var_a != var_b {
@@ -151,11 +151,11 @@ impl From<Formula> for Dual {
 		// we need to keep track of which clauses a variable is part of
 		let mut var_sets: Vec<MetroHashSet<usize>> = vec![MetroHashSet::default(); f.get_parameters().n_vars];
 		
-		for (i, (weight, vars)) in f.get_clauses().iter().enumerate() {
+		for (i, clause) in f.get_clauses().iter().enumerate() {
 			// add clause to not lose information
-			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
+			clauses.push((f.get_weights()[i], MetroHashSet::from_iter(clause.clone().into_iter())));
 			
-			for var in vars {
+			for var in clause {
 				// variables start at 1
 				let var = var.abs() as usize - 1 ;
 				// connect clause to all clauses that we already know contain var
@@ -196,10 +196,10 @@ impl From<Formula> for Incidence {
 		let mut clauses     = Vec::with_capacity(f.get_parameters().n_clauses);
 		let mut edge_count  = 0;
 
-		for (c, (weight, vars)) in f.get_clauses().iter().enumerate() {
-			clauses.push((*weight, MetroHashSet::from_iter(vars.clone().into_iter())));
+		for (c, clause) in f.get_clauses().iter().enumerate() {
+			clauses.push((f.get_weights()[c], MetroHashSet::from_iter(clause.clone().into_iter())));
 			// insert variables into neighborhood of clause and clause into neighborhood of variables
-			for &var in vars {
+			for &var in clause {
 				// the node of the variable
 				let var_node = var.abs() as usize + num_clauses -1;
 				// determine direction of edge

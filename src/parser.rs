@@ -2,12 +2,13 @@ use metrohash::{MetroHashSet, MetroHashMap};
 use itertools::Itertools;
 use crate::graph::{Dual, connected_components};
 
-type WeightedClause = (usize, Vec<isize>);
+type Clause = Vec<isize>;
 type Renaming = MetroHashMap<usize, usize>;
 
 #[derive(Debug)]
 pub struct Formula {
-	clauses: Vec<WeightedClause>,
+	clauses: Vec<Clause>,
+	weights: Vec<usize>,
 	parameters: Parameters
 }
 
@@ -19,16 +20,16 @@ pub struct Parameters {
 }
 
 /// Computes and applies a renaming so that variable names are in 0..n again
-fn compute_renaming(clauses: &mut [WeightedClause]) -> Renaming {
+fn compute_renaming(clauses: &mut [Clause]) -> Renaming {
 	let renaming: Renaming = clauses.iter()
-	                                .map(|(_, c)| c).flatten()
+	                                .flatten()
 	                                .map(|l| l.abs() as usize)
 	                                .unique()
 	                                .enumerate()
 	                                .map(|(k, v)| (v, k+1))
 	                                .collect();
 	
-	for (_, clause) in clauses.iter_mut() {
+	for clause in clauses.iter_mut() {
 		// apply renaming
 		for literal in clause {
 			let literal_var = literal.abs() as usize;
@@ -50,8 +51,8 @@ impl Formula {
 		loop {
 			// find hard unit-clauses
 			let mut single: Vec<_> = self.clauses.iter().enumerate()
-			                                     .filter(|(_, (w, c))| *w == self.parameters.top && c.len() == 1)
-			                                     .map(|(i, (_, c))| (i, c[0]))
+			                                     .filter(|(i, c)| self.weights[*i] == self.parameters.top && c.len() == 1)
+			                                     .map(|(i, c)| (i, c[0]))
 			                                     .collect();
 			
 			if single.is_empty() { 
@@ -69,9 +70,9 @@ impl Formula {
 
 			let single: MetroHashSet<_> = single.iter().map(|(_, c)| *c).collect();
 			// retain only clauses containing none of the literals
-			self.clauses.retain(|(_, c)| !c.iter().any(|l| single.contains(l)));
+			self.clauses.retain(|c| !c.iter().any(|l| single.contains(l)));
 			// retain only literals whose complement is not one of the unit-clauses
-			for (_, c) in &mut self.clauses {
+			for c in &mut self.clauses {
 				c.retain(|l| !single.contains(&-l));
 			}
 			
@@ -90,6 +91,7 @@ impl Formula {
 	pub fn sub_formulae(self) -> (Vec<Formula>, Vec<Renaming>) {
 		// copy some values
 		let clauses = self.clauses.clone();
+		let weights = self.weights.clone();
 		let top = self.parameters.top;
 
 		// use dual graph to find which clauses should stay together
@@ -102,6 +104,7 @@ impl Formula {
 		// decompose into subformulas based on components
 		for component in components {
 			let mut component_clauses: Vec<_> = component.iter().map(|c| clauses[*c].clone()).collect();
+			let component_clause_weights: Vec<_> = component.iter().map(|c| weights[*c]).collect();
 			let n_clauses = component_clauses.len();
 
 			let renaming = compute_renaming(&mut component_clauses);
@@ -109,6 +112,7 @@ impl Formula {
 
 			formulae.push(Formula {
 				clauses: component_clauses,
+				weights: component_clause_weights,
 				parameters: Parameters {
 					n_vars,
 					n_clauses,
@@ -123,8 +127,12 @@ impl Formula {
 		(formulae, renamings)
 	}
 
-	pub fn get_clauses(&self) -> &Vec<WeightedClause> {
+	pub fn get_clauses(&self) -> &Vec<Clause> {
 		&self.clauses
+	}
+
+	pub fn get_weights(&self) -> &Vec<usize> {
+		&self.weights
 	}
 
 	pub fn get_parameters(&self) -> &Parameters {
@@ -144,6 +152,7 @@ impl From<String> for Formula {
 		// parse formula
 		let mut formula = Formula {
 			clauses: Vec::with_capacity(parameters.n_clauses),
+			weights: Vec::with_capacity(parameters.n_clauses),
 			parameters
 		};
 		for line in lines {
@@ -152,11 +161,12 @@ impl From<String> for Formula {
 			let weight = values.next().map(|w| w.parse::<usize>().ok()).flatten().expect("file contains empty clause");
 			// the rest are the claus
 			let values = values.map(|s| s.parse::<isize>().expect("file contains malformed clause"));
-			let mut clause: Vec<isize> = values.collect();
+			let mut clause: Clause = values.collect();
 			// except for the last item, which is always 0
 			clause.remove(clause.len() - 1);
 			
-			formula.clauses.push((weight, clause))
+			formula.clauses.push(clause);
+			formula.weights.push(weight);
 		}
 
 		formula
