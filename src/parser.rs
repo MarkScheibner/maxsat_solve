@@ -4,6 +4,9 @@ use crate::graph::{Dual, connected_components};
 
 type Clause = Vec<isize>;
 type Renaming = MetroHashMap<usize, usize>;
+type PartialAssignment = Vec<Option<bool>>;
+// (still free, positive occurences, negative occurences, clauses)
+type PreprocessList = Vec<(usize, usize, Vec<usize>)>;
 
 #[derive(Debug)]
 pub struct Formula {
@@ -18,6 +21,14 @@ pub struct Parameters {
 	pub n_clauses: usize,
 	pub top: usize
 }
+
+enum PreprocessStackElement {
+	// variable, negative
+	Pure(usize, bool),
+	// literal
+	Unit(isize)
+}
+
 
 /// Computes and applies a renaming so that variable names are in 0..n again
 fn compute_renaming(clauses: &mut [Clause]) -> Renaming {
@@ -87,6 +98,75 @@ impl Formula {
 		self.parameters.n_clauses = self.clauses.len();
 		
 		(renaming, removed)
+	}
+
+	pub fn preprocess(&mut self) -> (PartialAssignment, Renaming) {
+		use crate::parser::PreprocessStackElement::*;
+		let mut occurence_list: PreprocessList = vec![(0, 0, Vec::default()); self.parameters.n_vars];
+		let mut still_free = vec![true; self.parameters.n_vars];
+		// build occurence list: for all variables find the clauses in which they occure and count their occurences
+		for (clause_index, clause) in self.clauses.iter().enumerate() {
+			for &var in clause {
+				let var_index = var.abs() as usize -1;
+				// increase count
+				if var > 0 { occurence_list[var_index].0 += 1; } else {	occurence_list[var_index].1 += 1; }
+				// add clause to list
+				// TODO also save index of variable in clause
+				occurence_list[var_index].2.push(clause_index);
+			}
+		} // should take O(n) where n ist the length of the formula
+
+		let mut preprocess_stack: Vec<PreprocessStackElement> = Vec::with_capacity(self.parameters.n_vars);
+		// push all pure variables on stack
+		for i in 0..self.parameters.n_vars {
+			if occurence_list[i].0 == 0 {
+				// never occures as positive literal
+				preprocess_stack.push(Pure(i, false));
+				still_free[i] = false;
+			} else if occurence_list[i].1 == 0 {
+				// never occures as negative literal
+				preprocess_stack.push(Pure(i, true));
+				still_free[i] = false;
+			}
+		}
+		// push all unit literals on stack
+		for i in 0..self.parameters.n_clauses {
+			let clause = &self.clauses[i];
+			let weight = self.weights[i];
+			// only consider hard clauses for unit clauses, since they are guaranteed(-ish) to not conflict
+			if clause.len() == 0 && weight == self.parameters.top {
+				let only_var = clause[0];
+				let only_var_index = only_var.abs() as usize - 1;
+				if still_free[only_var_index] {
+					// we didnt add this var as unit already
+					preprocess_stack.push(Unit(only_var));
+					still_free[only_var_index] = false;
+				}
+			}
+		}
+
+		let mut partial_assignment: PartialAssignment = vec![None; self.parameters.n_vars];
+		while let Some(work) = preprocess_stack.pop() {
+			match work {
+				Unit(literal) => {
+
+				},
+				Pure(var, neg) => {
+					partial_assignment[var] = Some(!neg);
+					// empty all clauses containing var, since setting var to !neg makes them true
+					for &clause_index in &occurence_list[var].2 {
+						self.clauses[clause_index].clear();
+					}
+				}
+			}
+		}
+
+		// TODO remove all empty clauses
+
+		// rename remaining variables into 1..n
+		let renaming = compute_renaming(&mut self.clauses);
+
+		(partial_assignment, renaming)
 	}
 	pub fn sub_formulae(self) -> (Vec<Formula>, Vec<Renaming>) {
 		// copy some values
