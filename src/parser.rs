@@ -107,7 +107,8 @@ impl Formula {
 		use crate::parser::WorkElement::*;
 		let mut occurence_list = self.build_occurence_list(); // should take O(n) where n is the length of the formula
 		let mut still_free = vec![true; self.parameters.n_vars];
-		let mut work_stack = self.initial_stack(&mut occurence_list, &mut still_free);
+		let mut work_stack = self.initial_stack(&mut occurence_list, &mut still_free); // O(v + c)
+		let mut index_mapping: MetroHashMap<(usize, usize), usize> = MetroHashMap::default(); // TODO initialize this
 
 		let mut partial_assignment: PartialAssignment = vec![None; self.parameters.n_vars];
 		while let Some(work) = work_stack.pop() { 
@@ -140,15 +141,21 @@ impl Formula {
 				},
 				Pure(var, val) => {
 					partial_assignment[var] = Some(val);
-					// empty all clauses containing var, since setting var to pos makes them true
+					// empty all clauses containing var, since setting var to val makes them evaluate to true
 					for &(_, clause_index) in &occurence_list[var].2 {
+						let clause = &mut self.clauses[clause_index];
+						// see if clause is already gone
+						if clause.is_empty() { continue; }
+
+						// otherwise clear it
 						self.clear_clause(clause_index, &occurence_list, &mut still_free, &mut work_stack);
 					} // O(d), where d is maximum degree of variables in formula
 				}
-			} // O(v), where v is number of variables
+			} // O(v * d), where v is number of variables
 		}
 
-		// TODO remove all empty clauses
+		// remove all empty clauses
+		self.clauses.retain(|clause| !clause.is_empty());
 
 		// rename remaining variables into 1..n
 		let renaming = compute_renaming(&mut self.clauses);
@@ -191,6 +198,7 @@ impl Formula {
 				free_list[i] = false;
 			}
 		}
+		// TODO also find out if there are any conflicts for the hard clauses
 		// push all unit literals on stack
 		for i in 0..self.parameters.n_clauses {
 			let clause = &self.clauses[i];
@@ -232,7 +240,7 @@ impl Formula {
 					free_list[literal_index] = false;
 				}
 			}
-		}
+		} // O(d)
 
 		self.clauses[clause].clear();
 	}
