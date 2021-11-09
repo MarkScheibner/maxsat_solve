@@ -1,13 +1,13 @@
 use std::cell::Cell;
 
-use metrohash::{MetroHashSet, MetroHashMap};
+use metrohash::MetroHashMap;
 use itertools::Itertools;
 use crate::graph::{Dual, connected_components};
 
 type Clause = Vec<isize>;
 type Renaming = MetroHashMap<usize, usize>;
 type PartialAssignment = Vec<Option<bool>>;
-// (still free, positive occurences, negative occurences, clauses)
+// (positive occurences, negative occurences, [(clause, index in clause)])
 type OccurenceList = Vec<(Cell<usize>, Cell<usize>, Vec<(usize, usize)>)>;
 
 #[derive(Debug)]
@@ -56,111 +56,75 @@ fn compute_renaming(clauses: &mut [Clause]) -> Renaming {
 }
 
 impl Formula {
-	/// Preprocesses the formula by unit progagation. After this step the formula will contain no unit-clauses
-	/// # Returns
-	/// A vector containing the renaming and a vector containing the removed literals
-	pub fn unit_propagation(&mut self) -> (Renaming, Vec<isize>) {
-		let mut removed: Vec<isize> = Vec::new();
-
-		loop {
-			// find hard unit-clauses
-			let mut single: Vec<_> = self.clauses.iter().enumerate()
-			                                     .filter(|(i, c)| self.weights[*i] == self.parameters.top && c.len() == 1)
-			                                     .map(|(i, c)| (i, c[0]))
-			                                     .collect();
-			
-			if single.is_empty() { 
-				// no unit-clauses were found, so we're done
-				break;
-			}
-			
-			// TODO find inconsistencies
-
-			// remove hard unit-clauses
-			single.reverse();
-			for (i, _) in &single {
-				self.clauses.swap_remove(*i);
-			}
-
-			let single: MetroHashSet<_> = single.iter().map(|(_, c)| *c).collect();
-			// retain only clauses containing none of the literals
-			self.clauses.retain(|c| !c.iter().any(|l| single.contains(l)));
-			// retain only literals whose complement is not one of the unit-clauses
-			for c in &mut self.clauses {
-				c.retain(|l| !single.contains(&-l));
-			}
-			
-			single.iter().for_each(|l| removed.push(*l));
-
-		}
-		
-		// calculate renaming: list variables and rename based on order
-		let renaming = compute_renaming(&mut self.clauses);
-
-		self.parameters.n_vars = renaming.len();
-		self.parameters.n_clauses = self.clauses.len();
-		
-		(renaming, removed)
-	}
-
 	pub fn preprocess(&mut self) -> (PartialAssignment, Renaming) {
 		use crate::parser::WorkElement::*;
+		let mut free_list      = vec![true; self.parameters.n_vars];
+		let mut clause_lengths = self.clauses.iter().map(|c| c.len()).collect::<Vec<_>>();
 		let mut occurence_list = self.build_occurence_list(); // should take O(n) where n is the length of the formula
-		let mut still_free = vec![true; self.parameters.n_vars];
-		let mut work_stack = self.initial_stack(&mut occurence_list, &mut still_free); // O(v + c)
-		let mut index_mapping: MetroHashMap<(usize, usize), usize> = MetroHashMap::default(); // TODO initialize this
+		let mut work_stack     = self.initial_stack(&mut occurence_list, &mut free_list); // O(v + c)
 
-		let mut partial_assignment: PartialAssignment = vec![None; self.parameters.n_vars];
+		let mut var_assignment: PartialAssignment = vec![None; self.parameters.n_vars];
 		while let Some(work) = work_stack.pop() { 
 			match work {
 				Unit(literal) => {
-					let literal_index = literal.abs() as usize - 1;
+					let var = literal.abs() as usize - 1;
 					// make the literal (not the variable) evaluate to true
-					partial_assignment[literal_index] = Some(literal > 0);
-
-					for &(var_index, clause_index) in &occurence_list[literal_index].2 {
+					var_assignment[var] = Some(literal > 0);
+					// remove clauses containing literal and remove ¬literal from clauses
+					for &(clause_index, var_index) in &occurence_list[var].2 {
 						let clause = &mut self.clauses[clause_index];
-						// see if clause is already gone
 						if clause.is_empty() { continue; }
 
-						// its not gone, so empty the clause or remove the negated literal
 						if clause[var_index] == literal {
-							self.clear_clause(clause_index, &occurence_list, &mut still_free, &mut work_stack);
+							// the clause contains the literal, so the clause can safely be removed
+							self.clear_clause(clause_index, &occurence_list, &mut free_list, &mut work_stack);
 						} else {
-							// the clause contains the negated literal, so we only remove that
-							clause.swap_remove(var_index);
-							if clause.len() == 1 {
-								// we got a new unit clause
-								work_stack.push(Unit(clause[0]))
+							// remove only the negated literal
+							clause[var_index] = 0;
+							clause_lengths[clause_index] -= 1;
+							if clause_lengths[clause_index] == 1 && self.weights[clause_index] == self.parameters.top {
+								// the clause became unit and is a hard clause, so we add a new unit to the stack
+								// this can only happen at most once per variable, so the cost is not multiplied
+								// TODO not true. if we remove x_1 from (¬x_1 or x_2) and (¬x_1 or x_2) we do this twice
+								let unit_literal = *clause.iter().find(|&&l| l != 0).unwrap();
+								let unit_index = unit_literal.abs() as usize -1;
+								if free_list[unit_index] {
+									work_stack.push(Unit(unit_literal));
+									free_list[unit_index] = false;
+								}
+							} else if clause_lengths[clause_index] == 0 {
+								// there are no literals remaining
+								// TODO this should not happen for hard clauses. check that first.
+								clause.clear();
 							}
-							// update index of var which is now at var_index
-							// TODO
-							
 						}
 					} // O(d), where d is maximum degree of variables in formula
 				},
 				Pure(var, val) => {
-					partial_assignment[var] = Some(val);
+					var_assignment[var] = Some(val);
 					// empty all clauses containing var, since setting var to val makes them evaluate to true
 					for &(_, clause_index) in &occurence_list[var].2 {
 						let clause = &mut self.clauses[clause_index];
-						// see if clause is already gone
 						if clause.is_empty() { continue; }
 
-						// otherwise clear it
-						self.clear_clause(clause_index, &occurence_list, &mut still_free, &mut work_stack);
+						self.clear_clause(clause_index, &occurence_list, &mut free_list, &mut work_stack);
 					} // O(d), where d is maximum degree of variables in formula
 				}
 			} // O(v * d), where v is number of variables
 		}
 
-		// remove all empty clauses
+		// remove all erased literals
+		for clause in &mut self.clauses {
+			clause.retain(|&l| l != 0);
+		}
+		// remove empty clauses
 		self.clauses.retain(|clause| !clause.is_empty());
+
 
 		// rename remaining variables into 1..n
 		let renaming = compute_renaming(&mut self.clauses);
 
-		(partial_assignment, renaming)
+		(var_assignment, renaming)
 	}
 	fn build_occurence_list(&self) -> OccurenceList {
 		let mut occ_list = vec![(Cell::new(0), Cell::new(0), Vec::default()); self.parameters.n_vars];
