@@ -14,16 +14,12 @@ type OccurenceList = Vec<(Cell<usize>, Cell<usize>, Vec<(usize, usize)>)>;
 pub struct Formula {
 	clauses: Vec<Clause>,
 	weights: Vec<usize>,
-	parameters: Parameters
-}
-
-#[derive(Debug)]
-pub struct Parameters {
 	pub n_vars: usize,
 	pub n_clauses: usize,
 	pub top: usize
 }
 
+#[derive(Debug)]
 enum WorkElement {
 	// variable, positive
 	Pure(usize, bool),
@@ -58,13 +54,13 @@ fn compute_renaming(clauses: &mut [Clause]) -> Renaming {
 impl Formula {
 	pub fn preprocess(&mut self) -> (PartialAssignment, Renaming) {
 		use crate::parser::WorkElement::*;
-		let mut free_list      = vec![true; self.parameters.n_vars];
+		let mut free_list      = vec![true; self.n_vars];
 		let mut clause_lengths = self.clauses.iter().map(|c| c.len()).collect::<Vec<_>>();
 		let mut occurence_list = self.build_occurence_list(); // should take O(n) where n is the length of the formula
 		let mut work_stack     = self.initial_stack(&mut occurence_list, &mut free_list); // O(v + c)
 
-		let mut var_assignment: PartialAssignment = vec![None; self.parameters.n_vars];
-		while let Some(work) = work_stack.pop() { 
+		let mut var_assignment: PartialAssignment = vec![None; self.n_vars];
+		while let Some(work) = work_stack.pop() {
 			match work {
 				Unit(literal) => {
 					let var = literal.abs() as usize - 1;
@@ -82,28 +78,41 @@ impl Formula {
 							// remove only the negated literal
 							clause[var_index] = 0;
 							clause_lengths[clause_index] -= 1;
-							if clause_lengths[clause_index] == 1 && self.weights[clause_index] == self.parameters.top {
-								// the clause became unit and is a hard clause, so we add a new unit to the stack
-								// this can only happen at most once per variable, so the cost is not multiplied
-								// TODO not true. if we remove x_1 from (¬x_1 or x_2) and (¬x_1 or x_2) we do this twice
-								let unit_literal = *clause.iter().find(|&&l| l != 0).unwrap();
-								let unit_index = unit_literal.abs() as usize -1;
-								if free_list[unit_index] {
-									work_stack.push(Unit(unit_literal));
-									free_list[unit_index] = false;
-								}
-							} else if clause_lengths[clause_index] == 0 {
-								// there are no literals remaining
-								// TODO this should not happen for hard clauses. check that first.
-								clause.clear();
-							}
 						}
 					} // O(d), where d is maximum degree of variables in formula
+					// some clauses may have become unit clauses
+					for &(clause_index, _) in &occurence_list[var].2 {
+						let clause = &mut self.clauses[clause_index];
+						if clause.is_empty() { continue; }
+
+						if clause_lengths[clause_index] == 1 && self.weights[clause_index] == self.top {
+							// this is a hard unit clause. find the remaining literal and add it to the work stack
+							let unit_literal = *clause.iter().find(|&&l| l != 0).unwrap();
+							let unit_index = unit_literal.abs() as usize -1;
+							if free_list[unit_index] {
+								work_stack.push(Unit(unit_literal));
+								free_list[unit_index] = false;
+								
+								
+								for &(clause, _) in &occurence_list[unit_index].2 {
+									if self.weights[clause] == self.top && clause_lengths[clause] == 1 {
+										// clear any hard unit clause that consists of the same literal. this will
+										// keep them from needlessly searching for their only remaining literal
+										self.clauses[clause].clear();
+									}
+								}
+							}
+						} else if clause_lengths[clause_index] == 0 {
+							// there are no literals remaining
+							// TODO this should not happen for hard clauses. check that first.
+							clause.clear();
+						}
+					}
 				},
 				Pure(var, val) => {
 					var_assignment[var] = Some(val);
 					// empty all clauses containing var, since setting var to val makes them evaluate to true
-					for &(_, clause_index) in &occurence_list[var].2 {
+					for &(clause_index, _) in &occurence_list[var].2 {
 						let clause = &mut self.clauses[clause_index];
 						if clause.is_empty() { continue; }
 
@@ -119,15 +128,18 @@ impl Formula {
 		}
 		// remove empty clauses
 		self.clauses.retain(|clause| !clause.is_empty());
-
+		// TODO only retain weights of retained clauses
 
 		// rename remaining variables into 1..n
 		let renaming = compute_renaming(&mut self.clauses);
 
+		self.n_vars = renaming.len();
+		self.n_clauses = self.clauses.len();
+
 		(var_assignment, renaming)
 	}
 	fn build_occurence_list(&self) -> OccurenceList {
-		let mut occ_list = vec![(Cell::new(0), Cell::new(0), Vec::default()); self.parameters.n_vars];
+		let mut occ_list = vec![(Cell::new(0), Cell::new(0), Vec::default()); self.n_vars];
 
 		// for all variables find the clauses in which they occure and count their occurences
 		for (clause_index, clause) in self.clauses.iter().enumerate() {
@@ -149,9 +161,9 @@ impl Formula {
 	fn initial_stack(&self, occ_list: &OccurenceList, free_list: &mut Vec<bool>) -> WorkStack {
 		use crate::parser::WorkElement::*;
 
-		let mut preprocess_stack = Vec::with_capacity(self.parameters.n_vars);
+		let mut preprocess_stack = Vec::with_capacity(self.n_vars);
 		// push all pure variables on stack
-		for i in 0..self.parameters.n_vars {
+		for i in 0..self.n_vars {
 			if occ_list[i].0.get() == 0 {
 				// never occures as positive, x_i is false
 				preprocess_stack.push(Pure(i, false));
@@ -164,11 +176,11 @@ impl Formula {
 		}
 		// TODO also find out if there are any conflicts for the hard clauses
 		// push all unit literals on stack
-		for i in 0..self.parameters.n_clauses {
+		for i in 0..self.n_clauses {
 			let clause = &self.clauses[i];
 			let weight = self.weights[i];
 			// only consider hard clauses for unit clauses, since they are guaranteed(-ish) to not conflict
-			if clause.len() == 0 && weight == self.parameters.top {
+			if clause.len() == 0 && weight == self.top {
 				let only_var = clause[0];
 				let only_var_index = only_var.abs() as usize - 1;
 				if free_list[only_var_index] {
@@ -212,7 +224,7 @@ impl Formula {
 		// copy some values
 		let clauses = self.clauses.clone();
 		let weights = self.weights.clone();
-		let top = self.parameters.top;
+		let top = self.top;
 
 		// use dual graph to find which clauses should stay together
 		let intermediate = Dual::from(self);
@@ -233,11 +245,9 @@ impl Formula {
 			formulae.push(Formula {
 				clauses: component_clauses,
 				weights: component_clause_weights,
-				parameters: Parameters {
-					n_vars,
-					n_clauses,
-					top
-				}
+				n_vars,
+				n_clauses,
+				top
 			});
 
 			renamings.push(renaming);
@@ -255,9 +265,6 @@ impl Formula {
 		&self.weights
 	}
 
-	pub fn get_parameters(&self) -> &Parameters {
-		&self.parameters
-	}
 }
 
 impl From<String> for Formula {
@@ -267,13 +274,18 @@ impl From<String> for Formula {
 			
 		// parse parameter line
 		let p_line = lines.next().expect("parameter line is missing in file");
-		let parameters = Parameters::parse_parameters(p_line);
+		let params: Vec<&str> = p_line.split(' ').collect();
+		let n_vars = params[2].parse().expect("parameter line is malformed");
+		let n_clauses = params[3].parse().expect("parameter line is malformed");
+		let top = params[4].parse().expect("parameter line is malformed");
 
 		// parse formula
 		let mut formula = Formula {
-			clauses: Vec::with_capacity(parameters.n_clauses),
-			weights: Vec::with_capacity(parameters.n_clauses),
-			parameters
+			clauses: Vec::with_capacity(n_clauses),
+			weights: Vec::with_capacity(n_clauses),
+			n_vars,
+			n_clauses,
+			top
 		};
 		for line in lines {
 			let mut values = line.split(' ');
@@ -293,19 +305,6 @@ impl From<String> for Formula {
 	}
 }
 
-impl Parameters {
-	fn parse_parameters(p_line: &str) -> Parameters {
-		let params: Vec<&str> = p_line.split(' ').collect();
-		let n_vars = params[2].parse().expect("parameter line is malformed");
-		let n_clauses = params[3].parse().expect("parameter line is malformed");
-		let top = params[4].parse().expect("parameter line is malformed");
-		Parameters {
-			n_vars,
-			n_clauses,
-			top
-		}
-	}
-}
 
 
 #[cfg(test)]

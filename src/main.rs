@@ -26,9 +26,9 @@ fn main() -> anyhow::Result<()>{
 	// parse formula
 	let mut formula = parser::Formula::from(contents);
 	// preprocess formula
-	let size_before = formula.get_parameters().n_clauses;
+	let size_before = formula.n_clauses;
 	let (_assignment, _renaming) = formula.preprocess();
-	let size_reduction = size_before - formula.get_parameters().n_clauses;
+	let size_reduction = size_before - formula.n_clauses;
 	// split formula
 	let (sub_formulae, _renamings) = formula.sub_formulae();
 	

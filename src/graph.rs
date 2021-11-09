@@ -99,8 +99,8 @@ pub struct Primal {
 impl From<Formula> for Primal {
 	fn from(f: Formula) -> Self {
 		// variables are nodes. nodes are joined by an edge if the respective variables appear in the same clause
-		let mut clauses    = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut edges      = vec![MetroHashSet::default(); f.get_parameters().n_vars];
+		let mut clauses    = Vec::with_capacity(f.n_clauses);
+		let mut edges      = vec![MetroHashSet::default(); f.n_vars];
 		let mut edge_count = 0;
 
 		// add edges between variables of each clause
@@ -126,7 +126,7 @@ impl From<Formula> for Primal {
 
 		Primal {
 			inner: UndirectedGraph {
-				size: f.get_parameters().n_vars,
+				size: f.n_vars,
 				edge_count,
 				edges
 			},
@@ -144,12 +144,12 @@ pub struct Dual {
 impl From<Formula> for Dual {
 	fn from(f: Formula) -> Self {
 		// clauses are nodes. nodes are joined by an edge if the respective clauses share a variable
-		let mut clauses    = Vec::with_capacity(f.get_parameters().n_clauses);
-		let mut edges      = vec![MetroHashSet::default(); f.get_parameters().n_clauses];
+		let mut clauses    = Vec::with_capacity(f.n_clauses);
+		let mut edges      = vec![MetroHashSet::default(); f.n_clauses];
 		let mut edge_count = 0;
 
 		// we need to keep track of which clauses a variable is part of
-		let mut var_sets: Vec<MetroHashSet<usize>> = vec![MetroHashSet::default(); f.get_parameters().n_vars];
+		let mut var_sets: Vec<MetroHashSet<usize>> = vec![MetroHashSet::default(); f.n_vars];
 		
 		for (i, clause) in f.get_clauses().iter().enumerate() {
 			// add clause to not lose information
@@ -172,7 +172,7 @@ impl From<Formula> for Dual {
 
 		Dual {
 			inner: UndirectedGraph {
-				size: f.get_parameters().n_clauses,
+				size: f.n_clauses,
 				edges,
 				edge_count
 			},
@@ -189,11 +189,11 @@ pub struct Incidence {
 }
 impl From<Formula> for Incidence {
 	fn from(f: Formula) -> Self {
-		let num_clauses     = f.get_parameters().n_clauses;
-		let size            = num_clauses + f.get_parameters().n_vars;
+		let num_clauses     = f.n_clauses;
+		let size            = num_clauses + f.n_vars;
 		let mut predecessor = vec![MetroHashSet::default(); size];
 		let mut successor   = vec![MetroHashSet::default(); size];
-		let mut clauses     = Vec::with_capacity(f.get_parameters().n_clauses);
+		let mut clauses     = Vec::with_capacity(f.n_clauses);
 		let mut edge_count  = 0;
 
 		for (c, clause) in f.get_clauses().iter().enumerate() {
