@@ -9,16 +9,6 @@ type Renaming = MetroHashMap<usize, usize>;
 type PartialAssignment = Vec<Option<bool>>;
 // (positive occurences, negative occurences, [(clause, index in clause)])
 type OccurenceList = Vec<(Cell<usize>, Cell<usize>, Vec<(usize, usize)>)>;
-
-#[derive(Debug)]
-pub struct Formula {
-	clauses: Vec<Clause>,
-	weights: Vec<usize>,
-	pub n_vars: usize,
-	pub n_clauses: usize,
-	pub top: usize
-}
-
 #[derive(Debug)]
 enum WorkElement {
 	// variable, positive
@@ -28,6 +18,15 @@ enum WorkElement {
 }
 type WorkStack = Vec<WorkElement>;
 
+
+#[derive(Debug)]
+pub struct Formula {
+	clauses: Vec<Clause>,
+	weights: Vec<usize>,
+	pub n_vars: usize,
+	pub n_clauses: usize,
+	pub top: usize
+}
 
 /// Computes and applies a renaming so that variable names are in 0..n again
 fn compute_renaming(clauses: &mut [Clause]) -> Renaming {
@@ -78,8 +77,13 @@ impl Formula {
 							// remove only the negated literal
 							clause[var_index] = 0;
 							clause_lengths[clause_index] -= 1;
+							if clause_lengths[clause_index] == 0 {
+								// there are no literals remaining
+								// TODO this should not happen for hard clauses. check that first.
+								clause.clear();
+							}
 						}
-					} // O(d), where d is maximum degree of variables in formula
+					} // O(d), where d is the degree of var
 					// some clauses may have become unit clauses
 					for &(clause_index, _) in &occurence_list[var].2 {
 						let clause = &mut self.clauses[clause_index];
@@ -88,38 +92,32 @@ impl Formula {
 						if clause_lengths[clause_index] == 1 && self.weights[clause_index] == self.top {
 							// this is a hard unit clause. find the remaining literal and add it to the work stack
 							let unit_literal = *clause.iter().find(|&&l| l != 0).unwrap();
-							let unit_index = unit_literal.abs() as usize -1;
-							if free_list[unit_index] {
+							let unit_var = unit_literal.abs() as usize -1;
+							if free_list[unit_var] {
 								work_stack.push(Unit(unit_literal));
-								free_list[unit_index] = false;
-								
-								
-								for &(clause, _) in &occurence_list[unit_index].2 {
-									if self.weights[clause] == self.top && clause_lengths[clause] == 1 {
-										// clear any hard unit clause that consists of the same literal. this will
-										// keep them from needlessly searching for their only remaining literal
-										self.clauses[clause].clear();
-									}
-								}
+								free_list[unit_var] = false;
 							}
-						} else if clause_lengths[clause_index] == 0 {
-							// there are no literals remaining
-							// TODO this should not happen for hard clauses. check that first.
-							clause.clear();
+							// clearing any hard unit clause that consists of the same literal will keep them from
+							// needlessly searching for their only remaining literal only to realize its not free
+							// TODO we can probably also remove non-hard unit clauses of the same literal
+							for &(clause, var_index) in &occurence_list[unit_var].2 {
+								let is_top = self.weights[clause] == self.top;
+								let contains_literal = self.clauses[clause][var_index] == literal;
+								if is_top && clause_lengths[clause] == 1 && contains_literal {
+									self.clauses[clause].clear();
+								}
+							} // this is essentially free, since we would do this anyways inside the first loop
 						}
-					}
+					} // O(d), if we move the cost of the second loop into the first loop
 				},
 				Pure(var, val) => {
 					var_assignment[var] = Some(val);
 					// empty all clauses containing var, since setting var to val makes them evaluate to true
 					for &(clause_index, _) in &occurence_list[var].2 {
-						let clause = &mut self.clauses[clause_index];
-						if clause.is_empty() { continue; }
-
 						self.clear_clause(clause_index, &occurence_list, &mut free_list, &mut work_stack);
-					} // O(d), where d is maximum degree of variables in formula
+					} // O(d), where d is degree of var
 				}
-			} // O(v * d), where v is number of variables
+			} // O(sum(d)) = O(n) 
 		}
 
 		// remove all erased literals
@@ -198,28 +196,35 @@ impl Formula {
 		use crate::parser::WorkElement::*;
 
 		for &literal in &self.clauses[clause] {
-			let literal_index = literal.abs() as usize - 1;
+			// ignore literals marked as removed
+			if literal == 0 { continue; }
+
+			let variable = literal.abs() as usize - 1;
+			// the variable will already be removed completely, so the count doesn't matter anymore
+			if !free_list[variable] { continue; }
+			
 			if literal > 0 {
 				// remove positive instance of variable
-				occ_list[literal_index].0.set(occ_list[literal_index].0.get() - 1);
-				if occ_list[literal_index].0.get() == 0 {
-					// we got a new pure literal (negative)
-					stack.push(Pure(literal_index, false));
-					free_list[literal_index] = false;
+				occ_list[variable].0.set(occ_list[variable].0.get() - 1);
+				if occ_list[variable].0.get() == 0 {
+					// we got a new pure literal (negative, as no positive instance remains)
+					stack.push(Pure(variable, false));
+					free_list[variable] = false;
 				}
 			} else {
 				// remove negative instance of variable
-				occ_list[literal_index].1.set(occ_list[literal_index].1.get() - 1);
-				if occ_list[literal_index].1.get() == 0 {
-					// we got a new pure literal (positive)
-					stack.push(Pure(literal_index, true));
-					free_list[literal_index] = false;
+				occ_list[variable].1.set(occ_list[variable].1.get() - 1);
+				if occ_list[variable].1.get() == 0 {
+					// we got a new pure literal (positive, as no negative instance remains)
+					stack.push(Pure(variable, true));
+					free_list[variable] = false;
 				}
 			}
-		} // O(d)
+		} // may take O(v), but in the worst case the whole formula will be cleared, costing O(n) at worst
 
 		self.clauses[clause].clear();
 	}
+	
 	pub fn sub_formulae(self) -> (Vec<Formula>, Vec<Renaming>) {
 		// copy some values
 		let clauses = self.clauses.clone();
