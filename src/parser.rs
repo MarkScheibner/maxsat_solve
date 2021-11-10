@@ -178,7 +178,7 @@ impl Formula {
 			let clause = &self.clauses[i];
 			let weight = self.weights[i];
 			// only consider hard clauses for unit clauses, since they are guaranteed(-ish) to not conflict
-			if clause.len() == 0 && weight == self.top {
+			if clause.len() == 1 && weight == self.top {
 				let only_var = clause[0];
 				let only_var_index = only_var.abs() as usize - 1;
 				if free_list[only_var_index] {
