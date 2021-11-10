@@ -309,23 +309,3 @@ impl From<String> for Formula {
 		formula
 	}
 }
-
-
-
-#[cfg(test)]
-mod tests {
-	#[test]
-	fn test_parameter_parser() {
-
-	}
-
-	#[test]
-	fn test_formula_parser() {
-
-	}
-
-	#[test]
-	fn test_parser() {
-
-	}
-}
