@@ -1,9 +1,12 @@
 use std::{fs, io::{self, Read}};
 use pico_args::Arguments;
 use rand::{ rngs::StdRng, SeedableRng };
+
+use crate::solver::solve;
 mod parser;
 mod graph;
 mod fasttw;
+mod solver;
 
 fn main() -> anyhow::Result<()>{
 	let mut rng = StdRng::seed_from_u64(crate::fasttw::SEED);
@@ -68,15 +71,17 @@ fn main() -> anyhow::Result<()>{
 	}
 	
 	for graph in graphs {
-		// see if we can compute a peo and tree-decomposition before the timer runs out
-		// TODO optimize this.
+		// compute decomposition
 		let mut decomposition_graph = fasttw::Graph::new(graph.size());
 		graph.list_edges().iter().for_each(|(u, v)| decomposition_graph.add_edge(*u, *v));
 		let peo = decomposition_graph.compute_peo(&mut rng);
 		let td = decomposition_graph.peo_to_decomposition(&peo).unwrap();
 		tw = td.iter().map(|(_,bag)| bag.len()).fold(tw, |c_tw, l_tw| l_tw.max(c_tw));
+		
+		// use decomposition to compue solution for component
+		let graph_solution = solve(&*graph, td);
 
-		// TODO do cool stuff with decomposition
+		// TODO unpack solution for component into assignment
 	}
 
 	println!("{}, {}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, max_min_deg, size_reduction, tw);
