@@ -20,10 +20,10 @@ pub const SEED: u64 = 42;
 /// and stores a bag. Thus, we can store the whole decomposition as array of
 /// tuples (the parent and the bag content).
 ///
-type Decomposition = Vec<(usize, Vec<usize>)>;
+pub type Decomposition = Vec<(usize, Vec<usize>)>;
 
 pub struct Graph {
-    pub n:         usize,                    // universe size ($V=\{0,\dots,1\}$)
+    n:         usize,                    // universe size ($V=\{0,\dots,1\}$)
     neighbors: Vec<MetroHashSet<usize>>, // edge set of the graph
 }
 
