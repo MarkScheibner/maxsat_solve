@@ -57,15 +57,7 @@ struct NiceDecomposition {
 	tree: Vec<(usize, Node)>
 }
 
-pub fn solve(graph: &dyn Graph, td: Decomposition) -> Assignment {
-	let _td = make_nice(graph, td);
-
-	// TODO do cool stuff with nice decomposition
-
-	Vec::new()
-}
-
-fn make_nice(graph: &dyn Graph, td: Decomposition) -> NiceDecomposition {
+fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 	let mut nice_decomposition = Vec::new();
 
 	// top down is easier

@@ -1,16 +1,17 @@
 use std::{fs, io::{self, Read}};
 use pico_args::Arguments;
 use rand::{ rngs::StdRng, SeedableRng };
+use solver::Solve;
 
-use crate::solver::solve;
 mod parser;
 mod graph;
 mod fasttw;
 mod solver;
 
-fn main() -> anyhow::Result<()>{
-	let mut rng = StdRng::seed_from_u64(crate::fasttw::SEED);
+use crate::graph::Graph;
 
+
+fn main() -> anyhow::Result<()>{
 	// get file name for WCNF file
 	let mut args = Arguments::from_env();
 	let file_name: Option<String> = args.value_from_str("--file").or_else(|_| args.value_from_str("-f")).ok();
@@ -26,34 +27,53 @@ fn main() -> anyhow::Result<()>{
 	}
 	reader.read_to_string(&mut contents)?;
 
-	// parse formula
-	let mut formula = parser::Formula::from(contents);
-	// preprocess formula
-	let size_before = formula.n_clauses;
+	// parse, preprocess and split formula
+	let mut formula                = parser::Formula::from(contents);
+	let size_before                = formula.n_clauses;
 	let (_assignment, _renaming) = formula.preprocess();
-	let size_reduction = size_before - formula.n_clauses;
-	// split formula
-	let (sub_formulae, _renamings) = formula.sub_formulae();
+	let _size_reduction            = size_before - formula.n_clauses;
+	let (sub_formulae, _renamings)  = formula.split();
 	
-	let primal = args.contains("-p") || args.contains("--primal");
-	let dual   = args.contains("-d") || args.contains("--dual");
+	let use_primal = args.contains("-p") || args.contains("--primal");
+	let use_dual   = args.contains("-d") || args.contains("--dual");
 	
-	// create graphs from each sub-formula
-	let graphs: Vec<_> = sub_formulae.into_iter().map(|f| if primal {
-		Box::new(graph::Primal::from(f)) as Box<dyn graph::Graph>
-	} else if dual {
-		Box::new(graph::Dual::from(f)) as Box<dyn graph::Graph>
-	} else  {
-		Box::new(graph::Incidence::from(f)) as Box<dyn graph::Graph>
-	}).collect();
-	
+	// get variable assignment for each subformula
+	let _sub_assignments = if use_primal {
+		solve_formulas::<graph::Primal>(sub_formulae)
+	} else if use_dual {
+		solve_formulas::<graph::Dual>(sub_formulae)
+	} else {
+		solve_formulas::<graph::Incidence>(sub_formulae)
+	};
+
+	// TODO unpack sub_assignments into preprocessed asignment
+	Ok(())
+}
+
+fn solve_formulas<T>(sub_formulas: Vec<parser::Formula>) -> Vec<Vec<bool>> 
+where T: Solve + Graph + From<parser::Formula>{
+	let mut rng = StdRng::seed_from_u64(crate::fasttw::SEED);
+	let mut assignments = Vec::with_capacity(sub_formulas.len());
+
+	for formula in sub_formulas {
+		let graph = T::from(formula);
+		let mut decomposition_graph = fasttw::Graph::new(graph.size());
+		graph.list_edges().iter().for_each(|(u, v)| decomposition_graph.add_edge(*u, *v));
+		let peo = decomposition_graph.compute_peo(&mut rng);
+		let td = decomposition_graph.peo_to_decomposition(&peo).unwrap();
+		assignments.push(graph.solve(td));
+	}
+
+	assignments
+}
+
+fn print_values(graphs: &Vec<impl graph::Graph>, size_reduction: usize) {
 	// some useful values
 	let nodes       = graphs.iter().map(|g| g.size()).collect::<Vec<_>>();
 	let edges       = graphs.iter().map(|g| g.edge_count()).collect::<Vec<_>>();
 	let num_nodes   = nodes.iter().sum::<usize>();
 	let num_edges   = edges.iter().sum::<usize>();
 	let components  = graphs.len();
-	let mut tw      = 0;
 	let degrees     = graphs.iter().map(|g| {
 		let max_deg = (0..g.size()).map(|i| g.degree(i)).fold(0,          |c_max, d| d.max(c_max));
 		let min_deg = (0..g.size()).map(|i| g.degree(i)).fold(usize::MAX, |c_min, d| d.min(c_min));
@@ -63,27 +83,9 @@ fn main() -> anyhow::Result<()>{
 	let g_min_deg   = degrees.iter().fold(usize::MAX, |c_min, &(min, _)| c_min.min(min));
 	let max_min_deg = degrees.iter().map(|&(min, _)| min).max().unwrap_or(0);
 
-	// see if we should even bother. mindeg and e/v are lower bounds for treewidth.
 	if degrees.iter().any(|&(min, _)| min > 100) || nodes.iter().zip(&edges).any(|(v, e)| v * 100 < *e) {
 		// don't even bother
 		println!("{}, {}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, max_min_deg, size_reduction, -1);
 		std::process::exit(1);
 	}
-	
-	for graph in graphs {
-		// compute decomposition
-		let mut decomposition_graph = fasttw::Graph::new(graph.size());
-		graph.list_edges().iter().for_each(|(u, v)| decomposition_graph.add_edge(*u, *v));
-		let peo = decomposition_graph.compute_peo(&mut rng);
-		let td = decomposition_graph.peo_to_decomposition(&peo).unwrap();
-		tw = td.iter().map(|(_,bag)| bag.len()).fold(tw, |c_tw, l_tw| l_tw.max(c_tw));
-		
-		// use decomposition to compue solution for component
-		let graph_solution = solve(&*graph, td);
-
-		// TODO unpack solution for component into assignment
-	}
-
-	println!("{}, {}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, max_min_deg, size_reduction, tw);
-	Ok(())
 }

@@ -225,7 +225,7 @@ impl Formula {
 		self.clauses[clause].clear();
 	}
 	
-	pub fn sub_formulae(self) -> (Vec<Formula>, Vec<Renaming>) {
+	pub fn split(self) -> (Vec<Formula>, Vec<Renaming>) {
 		// copy some values
 		let clauses = self.clauses.clone();
 		let weights = self.weights.clone();
