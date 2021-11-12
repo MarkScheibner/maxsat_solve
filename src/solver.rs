@@ -45,7 +45,10 @@ fn make_nice(graph: &dyn Graph, td: Decomposition) -> NiceDecomposition {
 	let (root, _)    = td.iter().enumerate().find(|(i, (p, _))| p == i).unwrap();
 	let mut children = vec![Vec::new(); td.len()];
 	for (i, &(parent, _)) in td.iter().enumerate() {
-		children[parent].push(i);
+		// root should not be its own child
+		if parent != i {
+			children[parent].push(i);
+		}
 	}
 
 	let mut work_queue = VecDeque::new();
