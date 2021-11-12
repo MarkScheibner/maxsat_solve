@@ -7,6 +7,33 @@ use crate::fasttw::Decomposition;
 
 type Assignment = Vec<bool>;
 
+pub trait Solve {
+	fn solve(self, td: Decomposition) -> Assignment;
+}
+
+impl Solve for Primal {
+	fn solve(self, td: Decomposition) -> Assignment {
+		let nice_td = make_nice(&self, td);
+
+		vec![true; self.size()]
+	}
+}
+impl Solve for Dual {
+	fn solve(self, td: Decomposition) -> Assignment {
+		let nice_td = make_nice(&self, td);
+
+		vec![true; self.size()]
+	}
+}
+impl Solve for Incidence {
+	fn solve(self, td: Decomposition) -> Assignment {
+		let nice_td = make_nice(&self, td);
+
+		vec![true; self.size()]
+	}
+}
+
+
 enum Node {
 	Leaf,
 	Introduce(usize),
