@@ -104,9 +104,10 @@ fn make_nice(graph: &dyn Graph, td: Decomposition) -> NiceDecomposition {
 						// TODO if both node and forget are in remove, this edge will be added twice
 						if graph.edge(node, forget) {
 							nice_decomposition.push((parent, Edge(node, forget)));
-							parent += 1
+							parent += 1;
 						} else if graph.edge(forget, node) {
-							nice_decomposition.push((parent, Edge(forget, node)))
+							nice_decomposition.push((parent, Edge(forget, node)));
+							parent += 1;
 						}
 					}
 				}
