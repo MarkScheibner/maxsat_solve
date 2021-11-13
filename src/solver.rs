@@ -152,8 +152,29 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 		}
 	}
 
-	NiceDecomposition {
-		size: nice_decomposition.len(),
-		tree: nice_decomposition
+}
+
+fn postorder<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
+	let (root, children)   = reverse(&tree);
+	let mut traverse_stack = vec![(false, root)];
+	let mut traversal      = Vec::with_capacity(tree.len());
+
+	while let Some((visited, node)) = traverse_stack.pop() {
+		if visited {
+			// were moving back up the tree
+			traversal.push(node);
+		} else {
+			// were still moving down the tree. push the root as visited and the children as not visited
+			traverse_stack.push((true, node));
+			for &child in &children[node] {
+				traverse_stack.push((false, child));
+			}
+		}
 	}
+
+	traversal
+}
+fn tree_index<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
+	// TODO
+	Vec::new()
 }
