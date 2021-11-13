@@ -6,33 +6,8 @@ use crate::graph::*;
 use crate::fasttw::Decomposition;
 
 type Assignment = Vec<bool>;
-
-pub trait Solve {
-	fn solve(self, td: Decomposition) -> Assignment;
-}
-
-impl Solve for Primal {
-	fn solve(self, td: Decomposition) -> Assignment {
-		let nice_td = make_nice(&self, td);
-
-		vec![true; self.size()]
-	}
-}
-impl Solve for Dual {
-	fn solve(self, td: Decomposition) -> Assignment {
-		let nice_td = make_nice(&self, td);
-
-		vec![true; self.size()]
-	}
-}
-impl Solve for Incidence {
-	fn solve(self, td: Decomposition) -> Assignment {
-		let nice_td = make_nice(&self, td);
-
-		vec![true; self.size()]
-	}
-}
-
+type NiceDecomposition = Vec<(usize, Node)>;
+type Configuration = (Vec<Option<bool>>, usize);
 
 enum Node {
 	Leaf,
@@ -43,32 +18,70 @@ enum Node {
 }
 use crate::solver::Node::*;
 
-enum Work<'a> {
-	// parent node, children
-	Join(usize,  &'a [usize]),
-	// parent node, child
-	Stretch(usize, usize),
-	// parent node, leaf-bag
-	Empty(usize, usize)
+pub trait Solve {
+	fn solve(self, td: Decomposition) -> Option<Assignment>;
 }
 
-struct NiceDecomposition {
-	size: usize,
-	tree: Vec<(usize, Node)>
+impl Solve for Primal {
+	fn solve(self, _td: Decomposition) -> Option<Assignment> {
+		Some(vec![true; self.size()])
+	}
+}
+impl Solve for Dual {
+	fn solve(self, _td: Decomposition) -> Option<Assignment> {
+		Some(vec![true; self.size()])
+	}
+}
+impl Solve for Incidence {
+	fn solve(self, td: Decomposition) -> Option<Assignment> {
+		let nice_td = make_nice(&self, td);
+
+		let tree_index       = tree_index(&nice_td);
+		let traversal        = postorder(&nice_td);
+		let mut config_stack = Vec::<Vec<Configuration>>::new();
+		for i in traversal {
+			let (parent, node) = &nice_td[i];
+			match node {
+				&Leaf => {
+					config_stack.push(Vec::new())
+				},
+				&Introduce(node) => {},
+				&Forget(node) => {
+					if node < self.num_clauses {
+						// node is clause
+						let mut config = config_stack.pop().unwrap();
+						// TODO remove config entry if clause is not true
+
+						config_stack.push(config);
+					}
+				},
+				&Edge(u, v) => {},
+				&Join => {
+					let left_configs  = config_stack.pop().unwrap();
+					let right_configs = config_stack.pop().unwrap();
+					// TODO join configs
+					let joined = left_configs;
+					config_stack.push(joined);
+				}
+			}
+		}
+
+		Some(vec![true; self.size()])
+	}
 }
 
 fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
-	let mut nice_decomposition = Vec::new();
-
-	// top down is easier
-	let (root, _)    = td.iter().enumerate().find(|(i, (p, _))| p == i).unwrap();
-	let mut children = vec![Vec::new(); td.len()];
-	for (i, &(parent, _)) in td.iter().enumerate() {
-		// root should not be its own child
-		if parent != i {
-			children[parent].push(i);
-		}
+	enum Work<'a> {
+		// parent node, children
+		Join(usize,  &'a [usize]),
+		// parent node, child
+		Stretch(usize, usize),
+		// parent node, leaf-bag
+		Empty(usize, usize)
 	}
+
+	let mut nice_decomposition = Vec::new();
+	let (root, children) = reverse(&td);
 
 	let mut work_queue = VecDeque::new();
 
@@ -152,6 +165,20 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 		}
 	}
 
+	nice_decomposition
+}
+
+fn reverse<T>(tree: &Vec<(usize, T)>) -> (usize, Vec<Vec<usize>>) {
+	let (root, _)    = tree.iter().enumerate().find(|(i, (p, _))| p == i).unwrap();
+	let mut children = vec![Vec::with_capacity(2); tree.len()];
+	for (i, &(parent, _)) in tree.iter().enumerate() {
+		// root should not be its own child
+		if parent != i {
+			children[parent].push(i);
+		}
+	}
+
+	(root, children)
 }
 
 fn postorder<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {

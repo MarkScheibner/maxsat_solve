@@ -50,7 +50,7 @@ fn main() -> anyhow::Result<()>{
 	Ok(())
 }
 
-fn solve_formulas<T>(sub_formulas: Vec<parser::Formula>) -> Vec<Vec<bool>> 
+fn solve_formulas<T>(sub_formulas: Vec<parser::Formula>) -> Option<Vec<Vec<bool>>> 
 where T: Solve + Graph + From<parser::Formula>{
 	let mut rng = StdRng::seed_from_u64(crate::fasttw::SEED);
 	let mut assignments = Vec::with_capacity(sub_formulas.len());
@@ -60,11 +60,12 @@ where T: Solve + Graph + From<parser::Formula>{
 		let mut decomposition_graph = fasttw::Graph::new(graph.size());
 		graph.list_edges().iter().for_each(|(u, v)| decomposition_graph.add_edge(*u, *v));
 		let peo = decomposition_graph.compute_peo(&mut rng);
-		let td = decomposition_graph.peo_to_decomposition(&peo).unwrap();
-		assignments.push(graph.solve(td));
+		let td  = decomposition_graph.peo_to_decomposition(&peo).unwrap();
+		let local_solution = graph.solve(td)?;
+		assignments.push(local_solution);
 	}
 
-	assignments
+	Some(assignments)
 }
 
 fn print_values(graphs: &Vec<impl graph::Graph>, size_reduction: usize) {

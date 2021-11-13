@@ -184,8 +184,9 @@ impl From<Formula> for Dual {
 #[derive(Debug, Delegate)]
 #[delegate(Graph, target="inner")]
 pub struct Incidence {
-	inner:    DirectedGraph,
-	_clauses: Vec<WeightedClauseSet>
+	inner:       DirectedGraph,
+	_clauses:    Vec<WeightedClauseSet>,
+	pub num_clauses: usize
 }
 impl From<Formula> for Incidence {
 	fn from(f: Formula) -> Self {
@@ -223,7 +224,8 @@ impl From<Formula> for Incidence {
 				predecessor,
 				edge_count
 			},
-			_clauses: clauses
+			_clauses: clauses,
+			num_clauses
 		}
 	}
 }
