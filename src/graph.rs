@@ -185,20 +185,22 @@ impl From<Formula> for Dual {
 #[delegate(Graph, target="inner")]
 pub struct Incidence {
 	inner:       DirectedGraph,
-	_clauses:    Vec<WeightedClauseSet>,
-	pub num_clauses: usize
+	weights:     Vec<usize>,
+	top:         usize,
+	num_clauses: usize
 }
 impl From<Formula> for Incidence {
 	fn from(f: Formula) -> Self {
 		let num_clauses     = f.n_clauses;
 		let size            = num_clauses + f.n_vars;
+		let top             = f.top;
 		let mut predecessor = vec![MetroHashSet::default(); size];
 		let mut successor   = vec![MetroHashSet::default(); size];
-		let mut clauses     = Vec::with_capacity(f.n_clauses);
+		let mut weights     = Vec::with_capacity(f.n_clauses);
 		let mut edge_count  = 0;
 
 		for (c, clause) in f.get_clauses().iter().enumerate() {
-			clauses.push((f.get_weights()[c], MetroHashSet::from_iter(clause.clone().into_iter())));
+			weights.push(f.get_weights()[c]);
 			// insert variables into neighborhood of clause and clause into neighborhood of variables
 			for &var in clause {
 				// the node of the variable
@@ -224,11 +226,24 @@ impl From<Formula> for Incidence {
 				predecessor,
 				edge_count
 			},
-			_clauses: clauses,
+			weights,
+			top,
 			num_clauses
 		}
 	}
 }
+impl Incidence {
+	pub fn is_clause(&self, v: usize) -> bool {
+		v < self.num_clauses
+	}
+	pub fn is_hard(&self, v: usize) -> bool {
+		self.is_clause(v) && self.weights[v] == self.top
+	}
+	pub fn weight(&self, v: usize) -> usize {
+		self.weights[v]
+	}
+}
+
 
 pub fn connected_components(graph: &impl Graph) -> Vec<Vec<usize>> {
 	// find components with union find
