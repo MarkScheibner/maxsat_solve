@@ -40,25 +40,78 @@ impl Solve for Incidence {
 		let traversal        = postorder(&nice_td);
 		let mut config_stack = Vec::<Vec<Configuration>>::new();
 		for i in traversal {
-			let (parent, node) = &nice_td[i];
+			let (_, node) = &nice_td[i];
 			match node {
 				&Leaf => {
 					config_stack.push(Vec::new())
 				},
-				&Introduce(node) => {},
-				&Forget(node) => {
-					if node < self.num_clauses {
-						// node is clause
-						let mut config = config_stack.pop().unwrap();
-						// TODO remove config entry if clause is not true
+				&Introduce(clause) if self.is_clause(clause) => {
+					// do nothing...
+				},
+				&Introduce(var) => {
+					let mut config = config_stack.pop()?;
+					let mut copies = Vec::with_capacity(1); // TODO
+					let len        = config.len();
+					// duplicate each config and set var to true and false
+					for (c, w) in &mut config[0..len-1] {
+						let mut copy = c.clone();
+						c[tree_index[var]]    = Some(false);
+						copy[tree_index[var]] = Some(true);
+						copies.push((copy, *w));
+					}
+					for copy in copies {
+						config.push(copy);
+					}
 
-						config_stack.push(config);
+					config_stack.push(config);
+				},
+				&Forget(clause) if self.is_clause(clause) => {
+					let mut config = config_stack.pop()?;
+					let mut reject = Vec::new();
+					for (i, (c, _)) in config.iter_mut().enumerate() {
+						// this is awkward, but if-let cant be negated
+						if let Some(true) = c[clause] {} else {
+							// clause is not true, "reject"
+							reject.push(i);
+						}
+					}
+					// remove rejected configs
+					reject.reverse();
+					for i in reject {
+						config.swap_remove(i);
+					}
+
+					config_stack.push(config);
+				},
+				&Forget(var) => {
+					let mut config = config_stack.pop()?;
+					for (c, _) in &mut config {
+						c[tree_index[var]] = None;
+						// TODO deduplicate!
+					}
+
+					config_stack.push(config);
+				},
+				&Edge(u, v)  => {
+					let mut config = config_stack.pop()?;
+					let clause = if u < v { u } else { v };
+					let var    = if u < v { v } else { u };
+					for (c, w) in &mut config {
+						let literal_val = if u < v { c[tree_index[var]]? } else { !c[tree_index[var]]? };
+						if let Some(false) = c[tree_index[clause]] {
+							// since the clause is not yet true, set it to whatever the literal says
+							c[tree_index[clause]] = Some(literal_val);
+							// update weight if necessary
+							// TODO is it correct to do that here?
+							if literal_val && !self.is_hard(clause) {
+								*w += self.weight(clause);
+							}
+						}
 					}
 				},
-				&Edge(u, v) => {},
 				&Join => {
-					let left_configs  = config_stack.pop().unwrap();
-					let right_configs = config_stack.pop().unwrap();
+					let left_configs  = config_stack.pop()?;
+					let right_configs = config_stack.pop()?;
 					// TODO join configs
 					let joined = left_configs;
 					config_stack.push(joined);
