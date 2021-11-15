@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use itertools::Itertools;
+use num::pow;
 
 use crate::graph::*;
 use crate::fasttw::Decomposition;
@@ -44,17 +45,18 @@ impl Solve for Incidence {
 			let (_, node) = &nice_td[i];
 			match node {
 				&Leaf => {
-					config_stack.push(Vec::new())
+					// push first empty configuration
+					config_stack.push(vec![(vec![None; k], 0)]);
 				},
 				&Introduce(clause) if self.is_clause(clause) => {
 					// do nothing...
+					// TODO maybe we need to set the value of clause to Some(false)
 				},
 				&Introduce(var) => {
 					let mut config = config_stack.pop()?;
-					let mut copies = Vec::with_capacity(1); // TODO
-					let len        = config.len();
+					let mut copies = Vec::with_capacity(pow(2, k-1));
 					// duplicate each config and set var to true and false
-					for (c, w) in &mut config[0..len-1] {
+					for (c, w) in &mut config {
 						let mut copy = c.clone();
 						c[tree_index[var]]    = Some(false);
 						copy[tree_index[var]] = Some(true);
@@ -86,10 +88,28 @@ impl Solve for Incidence {
 				},
 				&Forget(var) => {
 					let mut config = config_stack.pop()?;
+					let mut values = vec![None; pow(2, k-1)];
+					let mut remove = Vec::new();
 					for (c, _) in &mut config {
 						c[tree_index[var]] = None;
-						// TODO deduplicate!
 					}
+					for (i, (c, w)) in config.iter().enumerate() {
+						// TODO calculate index based on c
+						let config_index = 0;
+						match values[config_index] {
+							None => {
+								values[config_index] = Some((i, w));
+							},
+							Some((_, other_w)) if other_w >= w => {
+								remove.push(i);
+							},
+							Some((other_i, _)) => {
+								remove.push(other_i);
+							}
+						}
+					}
+
+					// TODO remove duplicates
 
 					config_stack.push(config);
 				},
