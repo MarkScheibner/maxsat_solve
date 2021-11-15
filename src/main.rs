@@ -60,8 +60,9 @@ where T: Solve + Graph + From<parser::Formula>{
 		let mut decomposition_graph = fasttw::Graph::new(graph.size());
 		graph.list_edges().iter().for_each(|(u, v)| decomposition_graph.add_edge(*u, *v));
 		let peo = decomposition_graph.compute_peo(&mut rng);
-		let td  = decomposition_graph.peo_to_decomposition(&peo).unwrap();
-		let local_solution = graph.solve(td)?;
+		let td  = decomposition_graph.peo_to_decomposition(&peo)?;
+		let k   = td.iter().map(|(_, bag)| bag.len()).max().unwrap_or(0);
+		let local_solution = graph.solve(td, k)?;
 		assignments.push(local_solution);
 	}
 
