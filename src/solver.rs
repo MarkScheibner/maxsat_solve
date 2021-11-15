@@ -8,7 +8,8 @@ use crate::fasttw::Decomposition;
 
 type Assignment = Vec<bool>;
 type NiceDecomposition = Vec<(usize, Node)>;
-type Configuration = (Vec<Option<bool>>, usize);
+// values, weight, config-index
+type Configuration = (Vec<bool>, usize, usize);
 
 #[derive(Clone, Copy)]
 enum Node {
@@ -46,21 +47,20 @@ impl Solve for Incidence {
 			match node {
 				&Leaf => {
 					// push first empty configuration
-					config_stack.push(vec![(vec![None; k], 0)]);
+					config_stack.push(vec![(vec![false; k], 0, 0)]);
 				},
 				&Introduce(clause) if self.is_clause(clause) => {
 					// do nothing...
-					// TODO maybe we need to set the value of clause to Some(false)
 				},
 				&Introduce(var) => {
 					let mut config = config_stack.pop()?;
 					let mut copies = Vec::with_capacity(pow(2, k-1));
 					// duplicate each config and set var to true and false
-					for (c, w) in &mut config {
+					for (c, w, i) in &mut config {
 						let mut copy = c.clone();
-						c[tree_index[var]]    = Some(false);
-						copy[tree_index[var]] = Some(true);
-						copies.push((copy, *w));
+						copy[tree_index[var]] = true;
+						let config_index = *i + pow(2, tree_index[var]);
+						copies.push((copy, *w, config_index));
 					}
 					for copy in copies {
 						config.push(copy);
@@ -71,11 +71,16 @@ impl Solve for Incidence {
 				&Forget(clause) if self.is_clause(clause) => {
 					let mut config = config_stack.pop()?;
 					let mut reject = Vec::new();
-					for (i, (c, _)) in config.iter_mut().enumerate() {
+					for (i, (c, w, config_index)) in config.iter_mut().enumerate() {
 						// this is awkward, but if-let cant be negated
-						if let Some(true) = c[clause] {} else {
+						if !c[tree_index[clause]] {
 							// clause is not true, "reject"
 							reject.push(i);
+						} else {
+							// reset the bit for clause to false, update index and weight accordingly
+							c[tree_index[clause]] = false;
+							*config_index -= pow(2, tree_index[clause]);
+							*w += if self.is_hard(clause) { 0 } else { self.weight(clause) };
 						}
 					}
 					// remove rejected configs
@@ -88,45 +93,52 @@ impl Solve for Incidence {
 				},
 				&Forget(var) => {
 					let mut config = config_stack.pop()?;
-					let mut values = vec![None; pow(2, k-1)];
-					let mut remove = Vec::new();
-					for (c, _) in &mut config {
-						c[tree_index[var]] = None;
+					for (c, _, i) in &mut config {
+						if c[tree_index[var]] {
+							// since we are going to set the var to false, if it is set to true we need to update i
+							*i -= pow(2, tree_index[var]);
+						}
+						c[tree_index[var]] = false;
 					}
-					for (i, (c, w)) in config.iter().enumerate() {
-						// TODO calculate index based on c
-						let config_index = 0;
+					
+					let mut values = vec![None; pow(2, k)];
+					let mut remove = Vec::new();
+					for (i, &(_, w, config_index)) in config.iter().enumerate() {
 						match values[config_index] {
+							Some((other_i, other_w)) => {
+								if other_w > w {
+									// other one is better
+									remove.push(i)
+								} else {
+									// this one is better
+									remove.push(other_i);
+									values[config_index] = Some((i, w));
+								}
+							},
 							None => {
 								values[config_index] = Some((i, w));
-							},
-							Some((_, other_w)) if other_w >= w => {
-								remove.push(i);
-							},
-							Some((other_i, _)) => {
-								remove.push(other_i);
 							}
 						}
 					}
 
-					// TODO remove duplicates
+					// TODO we need remove to be sorted, but at this point we cannot guarantee that.
+					for i in remove {
+						config.swap_remove(i);
+					}
 
 					config_stack.push(config);
 				},
 				&Edge(u, v)  => {
-					let mut config = config_stack.pop()?;
-					let clause = if u < v { u } else { v };
-					let var    = if u < v { v } else { u };
-					for (c, w) in &mut config {
-						let literal_val = if u < v { c[tree_index[var]]? } else { !c[tree_index[var]]? };
-						if let Some(false) = c[tree_index[clause]] {
-							// since the clause is not yet true, set it to whatever the literal says
-							c[tree_index[clause]] = Some(literal_val);
-							// update weight if necessary
-							// TODO is it correct to do that here?
-							if literal_val && !self.is_hard(clause) {
-								*w += self.weight(clause);
-							}
+					let mut config  = config_stack.pop()?;
+					let clause      = if u < v { u } else { v };
+					let var         = if u < v { v } else { u };
+					for (c, _, i) in &mut config {
+						// evaluate literal based on variable assignment
+						let literal_val = if u < v { c[tree_index[var]] } else { !c[tree_index[var]] };
+						// toggle the clause if the literal sets it to true
+						if !c[tree_index[clause]] && literal_val {
+							c[tree_index[clause]] = true;
+							*i += pow(2, tree_index[clause]);
 						}
 					}
 				},
@@ -275,6 +287,7 @@ fn postorder<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
 
 	traversal
 }
+
 fn tree_index(tree: &NiceDecomposition, k: usize) -> Vec<usize> {
 	let (root, children) = reverse(tree);
 	let mut index        = vec![0; tree.len()];
