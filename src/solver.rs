@@ -101,17 +101,18 @@ impl Solve for Incidence {
 						c[tree_index[var]] = false;
 					}
 					
-					let mut values = vec![None; pow(2, k)];
-					let mut remove = Vec::new();
+					let mut values      = vec![None; pow(2, k)];
+					let mut low_remove  = Vec::new();
+					let mut high_remove = Vec::new();
 					for (i, &(_, w, config_index)) in config.iter().enumerate() {
 						match values[config_index] {
 							Some((other_i, other_w)) => {
 								if other_w > w {
 									// other one is better
-									remove.push(i)
+									high_remove.push(i)
 								} else {
 									// this one is better
-									remove.push(other_i);
+									low_remove.push(other_i);
 									values[config_index] = Some((i, w));
 								}
 							},
@@ -121,8 +122,8 @@ impl Solve for Incidence {
 						}
 					}
 
-					// TODO we need remove to be sorted, but at this point we cannot guarantee that.
-					for i in remove {
+					// TODO we need low_remove to be sorted, but at this point we cannot guarantee that.
+					for i in low_remove.into_iter().chain(high_remove.into_iter()).rev() {
 						config.swap_remove(i);
 					}
 
