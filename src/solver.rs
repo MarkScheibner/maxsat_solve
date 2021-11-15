@@ -145,9 +145,16 @@ impl Solve for Incidence {
 				&Join => {
 					let left_configs  = config_stack.pop()?;
 					let right_configs = config_stack.pop()?;
-					// TODO join configs
-					let joined = left_configs;
-					config_stack.push(joined);
+					let mut values    = vec![None; pow(2, k)];
+					for (_, w, i) in left_configs {
+						values[i] = Some(w)
+					}
+					// keep only those configs that are in left and in right
+					let intersection = right_configs.into_iter().filter_map(|(c, w, i)| {
+						// we can just add the values, since the shared clauses have not yet added their weight
+						values[i].map(|other_w| (c, w + other_w, i))
+					}).collect_vec();
+					config_stack.push(intersection);
 				}
 			}
 		}
