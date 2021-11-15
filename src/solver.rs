@@ -254,7 +254,30 @@ fn postorder<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
 
 	traversal
 }
-fn tree_index<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
-	// TODO
-	Vec::new()
+fn tree_index(tree: &NiceDecomposition, k: usize) -> Vec<usize> {
+	let (root, children) = reverse(tree);
+	let mut index        = vec![0; tree.len()];
+	let mut free         = (0..k-1).collect_vec();
+	let mut work_stack   = vec![root];
+	while let Some(node) = work_stack.pop() {
+		match tree[node].1 {
+			Forget(node) => {
+				// claim first free index
+				let free_index = free.pop().unwrap();
+				index[node] = free_index;
+			},
+			Introduce(node) => {
+				// free own index again
+				free.push(index[node]);
+			},
+			// the rest does nothing for the index
+			_ => {}
+		}
+		// traverse in preorder
+		for &child in &children[node] {
+			work_stack.push(child);
+		}
+	}
+	
+	index
 }
