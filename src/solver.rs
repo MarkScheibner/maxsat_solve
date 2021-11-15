@@ -9,6 +9,7 @@ type Assignment = Vec<bool>;
 type NiceDecomposition = Vec<(usize, Node)>;
 type Configuration = (Vec<Option<bool>>, usize);
 
+#[derive(Clone, Copy)]
 enum Node {
 	Leaf,
 	Introduce(usize),
@@ -19,24 +20,24 @@ enum Node {
 use crate::solver::Node::*;
 
 pub trait Solve {
-	fn solve(self, td: Decomposition) -> Option<Assignment>;
+	fn solve(self, td: Decomposition, k: usize) -> Option<Assignment>;
 }
 
 impl Solve for Primal {
-	fn solve(self, _td: Decomposition) -> Option<Assignment> {
+	fn solve(self, _td: Decomposition, k: usize) -> Option<Assignment> {
 		Some(vec![true; self.size()])
 	}
 }
 impl Solve for Dual {
-	fn solve(self, _td: Decomposition) -> Option<Assignment> {
+	fn solve(self, _td: Decomposition, k: usize) -> Option<Assignment> {
 		Some(vec![true; self.size()])
 	}
 }
 impl Solve for Incidence {
-	fn solve(self, td: Decomposition) -> Option<Assignment> {
+	fn solve(self, td: Decomposition, k: usize) -> Option<Assignment> {
 		let nice_td = make_nice(&self, td);
 
-		let tree_index       = tree_index(&nice_td);
+		let tree_index       = tree_index(&nice_td, k);
 		let traversal        = postorder(&nice_td);
 		let mut config_stack = Vec::<Vec<Configuration>>::new();
 		for i in traversal {
