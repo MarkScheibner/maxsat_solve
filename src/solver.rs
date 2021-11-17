@@ -142,6 +142,8 @@ impl Solve for Incidence {
 							*i += pow(2, tree_index[clause]);
 						}
 					}
+
+					config_stack.push(config);
 				},
 				&Join => {
 					let left_configs  = config_stack.pop()?;
