@@ -30,9 +30,9 @@ fn main() -> anyhow::Result<()>{
 	// parse, preprocess and split formula
 	let mut formula                = parser::Formula::from(contents);
 	let size_before                = formula.n_clauses;
-	let (_assignment, _renaming) = formula.preprocess();
+	let (_assignment, _renaming)   = formula.preprocess().unwrap();
 	let _size_reduction            = size_before - formula.n_clauses;
-	let (sub_formulae, _renamings)  = formula.split();
+	let (sub_formulae, _renamings) = formula.split();
 	
 	let use_primal = args.contains("-p") || args.contains("--primal");
 	let use_dual   = args.contains("-d") || args.contains("--dual");
