@@ -124,9 +124,10 @@ impl Formula {
 		for clause in &mut self.clauses {
 			clause.retain(|&l| l != 0);
 		}
-		// remove empty clauses
+		// remove empty clauses and their weight
+		let mut retain = self.clauses.iter().map(|clause| !clause.is_empty());
+		self.weights.retain(|_| retain.next().unwrap_or(false));
 		self.clauses.retain(|clause| !clause.is_empty());
-		// TODO only retain weights of retained clauses
 
 		// rename remaining variables into 1..n
 		let renaming = compute_renaming(&mut self.clauses);
