@@ -72,7 +72,7 @@ impl Solve for Incidence {
 					let mut config = config_stack.pop()?;
 					let mut reject = Vec::new();
 					for (i, (a, s, f)) in config.iter_mut().enumerate() {
-						if !a[tree_index[clause]] {
+						if !a[tree_index[clause]] && self.is_hard(clause) {
 							// clause is not true, "reject"
 							reject.push(i);
 						} else {
