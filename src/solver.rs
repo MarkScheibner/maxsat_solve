@@ -190,12 +190,7 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 	let (root, children) = reverse(&td);
 
 	let mut work_queue = VecDeque::new();
-
-	if children[root].len() > 1 {
-		work_queue.push_back(Work::Join(0, &children[root]));
-	} else {
-		work_queue.push_back(Work::Stretch(0, children[root][0]))
-	}
+	work_queue.push_back(Work::Stretch(0, root));
 
 	while let Some(work) = work_queue.pop_front() {
 		match work {
@@ -222,7 +217,7 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 			Work::Stretch(parent, child) => {
 				// while we stretch from the parent to its child, we actually add and remove from the child
 				let (parent_bag, src_bag) = &td[child];
-				let dest_bag              = &td[*parent_bag].1;
+				let dest_bag              = if child == root { &[] } else { td[*parent_bag].1.as_slice() };
 
 				// find out which nodes to introduce (add) or forget (remove) if moving from src_bag to dest_bag
 				let add    = dest_bag.into_iter().filter(|v| !src_bag.contains(v)).collect_vec();
