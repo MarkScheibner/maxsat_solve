@@ -79,6 +79,7 @@ impl Solve for Incidence {
 							// reset the bit for clause to false, update fingerprint and score accordingly
 							a[tree_index[clause]] = false;
 							*f &= !(1 << tree_index[clause]);
+							// TODO find out if weight of hard clauses is needed
 							*s += if self.is_hard(clause) { 0 } else { self.weight(clause) };
 						}
 					}
@@ -99,30 +100,39 @@ impl Solve for Incidence {
 						}
 						a[tree_index[var]] = false;
 					}
-					let mut values      = vec![None; pow(2, k)];
-					let mut low_remove  = Vec::new();
-					let mut high_remove = Vec::new();
+
+					let max_fingerprint = config.iter().map(|c| c.2).max().unwrap();
+					// we should save every byte possible here, so we also use usize instead of Option<usize>
+					// for this we use 0 as None and i+1 as Some(i)
+					let mut values      = vec![0; max_fingerprint+1];
 					for (i, &(_, s, f)) in config.iter().enumerate() {
 						match values[f] {
-							Some((other_i, other_s)) => {
-								if other_s > s {
-									// other one is better
-									high_remove.push(i)
-								} else {
-									// this one is better
-									low_remove.push(other_i);
-									values[f] = Some((i, s));
-								}
+							// None
+							0 => {
+								values[f] = i+1;
 							},
-							None => {
-								values[f] = Some((i, s));
+							// Some(i+1)
+							some_i => {
+								// TODO the rust compiler complains about not knowing the type of config[some_i].1 by
+								// itself, so we have to get the score of other in this roundabout way
+								let other: &(Vec<bool>, usize, usize) = &config[some_i-1];
+								let other_s = other.1;
+								if other_s < s {
+									// this one is better
+									values[f] = i+1;
+								}
 							}
 						}
 					}
 
-					// TODO we need low_remove to be sorted, but at this point we cannot guarantee that.
-					for i in low_remove.into_iter().chain(high_remove.into_iter()).rev() {
-						config.swap_remove(i);
+					// deduplicate
+					for i in (0..config.len()).rev() {
+						let fingerprint = config[i].2;
+						if values[fingerprint] != i+1 {
+							// if an assignment does not find its own index, another assignment with the same
+							// fingerprint had a better score, so we can remove this assigmnent
+							config.swap_remove(i);
+						}
 					}
 
 					config_stack.push(config);
