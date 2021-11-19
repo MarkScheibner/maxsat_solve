@@ -231,7 +231,7 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 				}
 				for &forget in remove {
 					nice_decomposition.push((parent, Forget(forget)));
-					parent += 1;
+					parent = nice_decomposition.len() - 1;
 					// add all edges that are incident to forget
 					for &node in src_bag {
 						// TODO if both node and forget are in remove, this edge will be added twice
