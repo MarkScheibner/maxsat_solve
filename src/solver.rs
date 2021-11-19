@@ -308,20 +308,28 @@ fn postorder<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
 fn tree_index(tree: &NiceDecomposition, k: usize) -> Vec<usize> {
 	let (root, children) = reverse(tree);
 	let mut index        = vec![0; tree.len()];
-	let mut free         = (0..k-1).collect_vec();
+	let mut free         = vec![(0..k-1).collect_vec()];
 	let mut work_stack   = vec![root];
 	while let Some(node) = work_stack.pop() {
 		match tree[node].1 {
 			Forget(node) => {
-				// claim first free index
-				let free_index = free.pop().unwrap();
+				// claim first free index in current free list
+				let free_index = free.last_mut().unwrap().pop().unwrap();
 				index[node] = free_index;
 			},
 			Introduce(node) => {
 				// free own index again
-				free.push(index[node]);
+				free.last_mut().unwrap().push(index[node]);
 			},
-			// the rest does nothing for the index
+			Join => {
+				// we need to be able to undo all changes to the free list if we jump into the right sub-tree
+				free.push(free.last().unwrap().clone());
+			},
+			Leaf => {
+				// we are done with this path, so dispose all changes done to the free list since last join
+				free.pop();
+			},
+			// the rest is uninteresting
 			_ => {}
 		}
 		// traverse in preorder
