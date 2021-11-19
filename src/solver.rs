@@ -8,7 +8,7 @@ use crate::fasttw::Decomposition;
 
 type Assignment = Vec<bool>;
 type NiceDecomposition = Vec<(usize, Node)>;
-// values, weight, config-index
+// assignment, score, fingerprint
 type Configuration = (Vec<bool>, usize, usize);
 
 #[derive(Clone, Copy)]
@@ -54,13 +54,13 @@ impl Solve for Incidence {
 				},
 				&Introduce(var) => {
 					let mut config = config_stack.pop()?;
-					let mut copies = Vec::with_capacity(pow(2, k-1));
-					// duplicate each config and set var to true and false
-					for (c, w, i) in &mut config {
-						let mut copy = c.clone();
+					let mut copies = Vec::with_capacity(config.len());
+					// duplicate each assignment and set var to true and false
+					for (a, s, f) in &mut config {
+						let mut copy = a.clone();
 						copy[tree_index[var]] = true;
-						let config_index = *i + pow(2, tree_index[var]);
-						copies.push((copy, *w, config_index));
+						let new_fingerprint = *f | (1 << tree_index[var]);
+						copies.push((copy, *s, new_fingerprint));
 					}
 					for copy in copies {
 						config.push(copy);
@@ -71,16 +71,15 @@ impl Solve for Incidence {
 				&Forget(clause) if self.is_clause(clause) => {
 					let mut config = config_stack.pop()?;
 					let mut reject = Vec::new();
-					for (i, (c, w, config_index)) in config.iter_mut().enumerate() {
-						// this is awkward, but if-let cant be negated
-						if !c[tree_index[clause]] {
+					for (i, (a, s, f)) in config.iter_mut().enumerate() {
+						if !a[tree_index[clause]] {
 							// clause is not true, "reject"
 							reject.push(i);
 						} else {
-							// reset the bit for clause to false, update index and weight accordingly
-							c[tree_index[clause]] = false;
-							*config_index -= pow(2, tree_index[clause]);
-							*w += if self.is_hard(clause) { 0 } else { self.weight(clause) };
+							// reset the bit for clause to false, update fingerprint and score accordingly
+							a[tree_index[clause]] = false;
+							*f &= !(1 << tree_index[clause]);
+							*s += if self.is_hard(clause) { 0 } else { self.weight(clause) };
 						}
 					}
 					// remove rejected configs
@@ -93,31 +92,30 @@ impl Solve for Incidence {
 				},
 				&Forget(var) => {
 					let mut config = config_stack.pop()?;
-					for (c, _, i) in &mut config {
-						if c[tree_index[var]] {
-							// since we are going to set the var to false, if it is set to true we need to update i
-							*i -= pow(2, tree_index[var]);
+					for (a, _, f) in &mut config {
+						if a[tree_index[var]] {
+							// update fingerprint if setting var to false changes assignment
+							*f &= !(1 << tree_index[var]);
 						}
-						c[tree_index[var]] = false;
+						a[tree_index[var]] = false;
 					}
-					
 					let mut values      = vec![None; pow(2, k)];
 					let mut low_remove  = Vec::new();
 					let mut high_remove = Vec::new();
-					for (i, &(_, w, config_index)) in config.iter().enumerate() {
-						match values[config_index] {
-							Some((other_i, other_w)) => {
-								if other_w > w {
+					for (i, &(_, s, f)) in config.iter().enumerate() {
+						match values[f] {
+							Some((other_i, other_s)) => {
+								if other_s > s {
 									// other one is better
 									high_remove.push(i)
 								} else {
 									// this one is better
 									low_remove.push(other_i);
-									values[config_index] = Some((i, w));
+									values[f] = Some((i, s));
 								}
 							},
 							None => {
-								values[config_index] = Some((i, w));
+								values[f] = Some((i, s));
 							}
 						}
 					}
@@ -130,16 +128,18 @@ impl Solve for Incidence {
 					config_stack.push(config);
 				},
 				&Edge(u, v)  => {
-					let mut config  = config_stack.pop()?;
-					let clause      = if u < v { u } else { v };
-					let var         = if u < v { v } else { u };
-					for (c, _, i) in &mut config {
-						// evaluate literal based on variable assignment
-						let literal_val = if u < v { c[tree_index[var]] } else { !c[tree_index[var]] };
+					let mut config = config_stack.pop()?;
+					let negated    = u < v;
+					let clause     = if negated { u } else { v };
+					let var        = if negated { v } else { u };
+
+					for (a, _, f) in &mut config {
+						// evaluate literal based on assignment of var
+						let literal_val = if negated { a[tree_index[var]] } else { !a[tree_index[var]] };
 						// toggle the clause if the literal sets it to true
-						if !c[tree_index[clause]] && literal_val {
-							c[tree_index[clause]] = true;
-							*i += pow(2, tree_index[clause]);
+						if !a[tree_index[clause]] && literal_val {
+							a[tree_index[clause]] = true;
+							*f |= 1 << tree_index[clause];
 						}
 					}
 
@@ -149,19 +149,19 @@ impl Solve for Incidence {
 					let left_configs  = config_stack.pop()?;
 					let right_configs = config_stack.pop()?;
 					let mut values    = vec![None; pow(2, k)];
-					for (_, w, i) in left_configs {
-						values[i] = Some(w)
+					for (_, s, f) in left_configs {
+						values[f] = Some(s)
 					}
-					// keep only those configs that are in left and in right
-					let intersection = right_configs.into_iter().filter_map(|(c, w, i)| {
-						// we can just add the values, since the shared clauses have not yet added their weight
-						values[i].map(|other_w| (c, w + other_w, i))
+					// keep only those assignments that are in left and in right
+					let intersection = right_configs.into_iter().filter_map(|(a, s, f)| {
+						// we can just add the scpres, since the shared clauses have not yet added their weight
+						values[f].map(|other_s| (a, s + other_s, f))
 					}).collect_vec();
 					config_stack.push(intersection);
 				}
 			}
 		}
-
+		
 		Some(vec![true; self.size()])
 	}
 }
