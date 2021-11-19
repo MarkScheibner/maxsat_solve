@@ -303,7 +303,7 @@ fn postorder<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
 fn tree_index(tree: &NiceDecomposition, k: usize) -> Vec<usize> {
 	let (root, children) = reverse(tree);
 	let mut index        = vec![0; tree.len()];
-	let mut free         = vec![(0..k-1).collect_vec()];
+	let mut free         = vec![(0..k).collect_vec()];
 	let mut work_stack   = vec![root];
 	while let Some(node) = work_stack.pop() {
 		match tree[node].1 {
