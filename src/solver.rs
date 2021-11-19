@@ -284,14 +284,14 @@ fn reverse<T>(tree: &Vec<(usize, T)>) -> (usize, Vec<Vec<usize>>) {
 
 fn postorder<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
 	let (root, children)   = reverse(&tree);
-	let mut traverse_stack = vec![(false, root)];
+	let mut traverse_stack = vec![root];
 	let mut traversal      = Vec::with_capacity(tree.len());
 
 	// do a preorder
-	while let Some((_, node)) = traverse_stack.pop() {
+	while let Some(node) = traverse_stack.pop() {
 		traversal.push(node);
 		for &child in &children[node] {
-			traverse_stack.push((false, child));
+			traverse_stack.push(child);
 		}
 	}
 
