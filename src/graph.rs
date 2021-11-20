@@ -17,6 +17,7 @@ pub trait Graph {
 	fn degree(&self, node: usize)              -> usize;
 	fn size(&self)                             -> usize;
 	fn edge_count(&self)                       -> usize;
+	fn print(&self)                            -> String;
 }
 
 #[derive(Debug)]
@@ -51,6 +52,16 @@ impl Graph for UndirectedGraph {
 
 	fn edge_count(&self) -> usize {
 		self.edge_count
+	}
+
+	fn print(&self) -> String {
+		let mut output = String::new();
+		output.push_str(&format!("p tw {} {}\n", self.size(), self.edge_count()));
+		for e in self.list_edges() {
+			output.push_str(&format!("{} {}\n", e.0, e.1));
+		}
+
+		output
 	}
 }
 
@@ -87,6 +98,16 @@ impl Graph for DirectedGraph {
 
 	fn edge_count(&self) -> usize {
 		self.edge_count
+	}
+
+	fn print(&self) -> String {
+		let mut output = String::new();
+		output.push_str(&format!("p tw {} {}\n", self.size(), self.edge_count()));
+		for e in self.list_edges() {
+			output.push_str(&format!("{} {}\n", e.0, e.1));
+		}
+
+		output
 	}
 }
 
