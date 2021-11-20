@@ -227,7 +227,7 @@ impl From<Formula> for Incidence {
 				// the node of the variable
 				let var_node = var.abs() as usize + num_clauses -1;
 				// determine direction of edge
-				if var < 0 {
+				if var > 0 {
 					// positive literal: edge goes from clause to variable
 					successor[c].insert(var_node);
 					predecessor[var_node].insert(c);
