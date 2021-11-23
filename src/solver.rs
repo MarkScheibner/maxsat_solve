@@ -214,7 +214,7 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 					work_queue.push_back(Work::Stretch(this_node, *children.last().unwrap()));
 				}
 			}
-			Work::Stretch(parent, child) => {
+			Work::Stretch(mut parent, child) => {
 				// while we stretch from the parent to its child, we actually add and remove from the child
 				let (parent_bag, src_bag) = &td[child];
 				let dest_bag              = if child == root { &[] } else { td[*parent_bag].1.as_slice() };
@@ -222,8 +222,6 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 				// find out which nodes to introduce (add) or forget (remove) if moving from src_bag to dest_bag
 				let add    = dest_bag.into_iter().filter(|v| !src_bag.contains(v)).collect_vec();
 				let remove = src_bag.into_iter().filter(|v| !dest_bag.contains(v)).collect_vec();
-
-				let mut parent = parent;
 
 				for &introduce in add {
 					nice_decomposition.push((parent, Introduce(introduce)));
