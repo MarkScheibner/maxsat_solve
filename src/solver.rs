@@ -138,14 +138,14 @@ impl Solve for Incidence {
 					config_stack.push(config);
 				},
 				&Edge(u, v)  => {
-					let mut config = config_stack.pop()?;
-					let negated    = u < v;
-					let clause     = if negated { u } else { v };
-					let var        = if negated { v } else { u };
+					let mut config = config_stack.pop().unwrap();
+					let clause     = if u < v { u } else { v };
+					let var        = if u < v { v } else { u };
+					let negated    = var == u;
 
 					for (a, _, f) in &mut config {
 						// evaluate literal based on assignment of var
-						let literal_val = if negated { a[tree_index[var]] } else { !a[tree_index[var]] };
+						let literal_val = if negated { !a[tree_index[var]] } else { a[tree_index[var]] };
 						// toggle the clause if the literal sets it to true
 						if !a[tree_index[clause]] && literal_val {
 							a[tree_index[clause]] = true;
