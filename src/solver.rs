@@ -38,11 +38,12 @@ impl Solve for Dual {
 impl Solve for Incidence {
 	fn solve(self, td: Decomposition, k: usize) -> Option<Assignment> {
 		let nice_td = make_nice(&self, td);
-
+		
 		let tree_index       = tree_index(&nice_td, k);
 		let traversal        = postorder(&nice_td);
 		let mut config_stack = Vec::<Vec<Configuration>>::new();
-		for i in traversal {
+		let traversal_len    = traversal.len();
+		for (step, i) in traversal.into_iter().enumerate() {
 			let (_, node) = &nice_td[i];
 			match node {
 				&Leaf => {
@@ -53,7 +54,7 @@ impl Solve for Incidence {
 					// do nothing...
 				},
 				&Introduce(var) => {
-					let mut config = config_stack.pop()?;
+					let mut config = config_stack.pop().unwrap();
 					let mut copies = Vec::with_capacity(config.len());
 					// duplicate each assignment and set var to true and false
 					for (a, s, f) in &mut config {
@@ -69,7 +70,7 @@ impl Solve for Incidence {
 					config_stack.push(config);
 				},
 				&Forget(clause) if self.is_clause(clause) => {
-					let mut config = config_stack.pop()?;
+					let mut config = config_stack.pop().unwrap();
 					let mut reject = Vec::new();
 					for (i, (a, s, f)) in config.iter_mut().enumerate() {
 						if !a[tree_index[clause]] && self.is_hard(clause) {
@@ -79,7 +80,6 @@ impl Solve for Incidence {
 							// reset the bit for clause to false, update fingerprint and score accordingly
 							a[tree_index[clause]] = false;
 							*f &= !(1 << tree_index[clause]);
-							// TODO find out if weight of hard clauses is needed
 							*s += if self.is_hard(clause) { 0 } else { self.weight(clause) };
 						}
 					}
@@ -92,7 +92,7 @@ impl Solve for Incidence {
 					config_stack.push(config);
 				},
 				&Forget(var) => {
-					let mut config = config_stack.pop()?;
+					let mut config = config_stack.pop().unwrap();
 					for (a, _, f) in &mut config {
 						if a[tree_index[var]] {
 							// update fingerprint if setting var to false changes assignment
@@ -142,6 +142,8 @@ impl Solve for Incidence {
 					let clause     = if u < v { u } else { v };
 					let var        = if u < v { v } else { u };
 					let negated    = var == u;
+					let var_name   = var - self.num_clauses + 1;
+					let clause_name= clause + 2;
 
 					for (a, _, f) in &mut config {
 						// evaluate literal based on assignment of var
@@ -156,8 +158,8 @@ impl Solve for Incidence {
 					config_stack.push(config);
 				},
 				&Join => {
-					let left_configs  = config_stack.pop()?;
-					let right_configs = config_stack.pop()?;
+					let left_configs  = config_stack.pop().unwrap();
+					let right_configs = config_stack.pop().unwrap();
 					let mut values    = vec![None; pow(2, k)];
 					for (_, s, f) in left_configs {
 						values[f] = Some(s)
@@ -170,8 +172,14 @@ impl Solve for Incidence {
 					config_stack.push(intersection);
 				}
 			}
+
+			if config_stack.last().map_or(true, |c| c.is_empty()) {
+				println!("No solution found after {}/{} steps", step, traversal_len);
+				return None;
+			}
 		}
 		
+		println!("{:?}", config_stack);
 		Some(vec![true; self.size()])
 	}
 }
@@ -185,7 +193,7 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 		// parent node, leaf-bag
 		Empty(usize, usize)
 	}
-
+	
 	let mut nice_decomposition = Vec::new();
 	let (root, children) = reverse(&td);
 

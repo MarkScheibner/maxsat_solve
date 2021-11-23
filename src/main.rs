@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::{fs, io::{self, Read}};
 use pico_args::Arguments;
 use rand::{ rngs::StdRng, SeedableRng };
@@ -55,13 +56,17 @@ where T: Solve + Graph + From<parser::Formula>{
 	let mut rng = StdRng::seed_from_u64(crate::fasttw::SEED);
 	let mut assignments = Vec::with_capacity(sub_formulas.len());
 
-	for formula in sub_formulas {
+	for (i, formula) in sub_formulas.into_iter().enumerate() {
 		let graph = T::from(formula);
 		let mut decomposition_graph = fasttw::Graph::new(graph.size());
 		graph.list_edges().iter().for_each(|(u, v)| decomposition_graph.add_edge(*u, *v));
 		let peo = decomposition_graph.compute_peo(&mut rng);
 		let td  = decomposition_graph.peo_to_decomposition(&peo)?;
 		let k   = td.iter().map(|(_, bag)| bag.len()).max().unwrap_or(0);
+		let mut file = fs::File::create(format!("../graph_{}.gr", i)).unwrap();
+		write!(file, "{}", graph.print()).unwrap();
+		let mut file = fs::File::create(format!("../graph_{}.td", i)).unwrap();
+		write!(file, "{}", fasttw::print(&td, k, graph.size())).unwrap();
 		let local_solution = graph.solve(td, k)?;
 		assignments.push(local_solution);
 	}

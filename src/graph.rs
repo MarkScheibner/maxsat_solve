@@ -208,7 +208,7 @@ pub struct Incidence {
 	inner:       DirectedGraph,
 	weights:     Vec<usize>,
 	top:         usize,
-	num_clauses: usize
+	pub num_clauses: usize
 }
 impl From<Formula> for Incidence {
 	fn from(f: Formula) -> Self {
