@@ -237,7 +237,7 @@ fn _main() {
     }
 }
 
-pub fn print(td: Decomposition, tw: usize, n: usize) -> String {
+pub fn print(td: &Decomposition, tw: usize, n: usize) -> String {
     let mut output = String::new();
     output.push_str(&format!("s td {} {} {}\n", td.len(), tw, n));
     for (i, (_, bag)) in td.iter().enumerate() {
@@ -248,8 +248,12 @@ pub fn print(td: Decomposition, tw: usize, n: usize) -> String {
         output.push_str("\n");
     }
 
-    for (i, (parent, _)) in td.iter().enumerate() {
-        output.push_str(&format!("{} {}\n", i, parent));
+    for (i, &(parent, _)) in td.iter().enumerate() {
+        if i < parent {
+            output.push_str(&format!("{} {}\n", i, parent));
+        } else if i > parent {
+            output.push_str(&format!("{} {}\n", parent, i));
+        }
     }
 
     output
