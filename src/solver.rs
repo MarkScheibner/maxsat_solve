@@ -22,21 +22,21 @@ enum Node {
 use crate::solver::Node::*;
 
 pub trait Solve {
-	fn solve(self, td: Decomposition, k: usize) -> Option<Assignment>;
+	fn solve(self, td: Decomposition, k: usize) -> Option<(Assignment, usize)>;
 }
 
 impl Solve for Primal {
-	fn solve(self, _td: Decomposition, k: usize) -> Option<Assignment> {
-		Some(vec![true; self.size()])
+	fn solve(self, _td: Decomposition, k: usize) -> Option<(Assignment, usize)> {
+		Some((vec![true; self.size()], 0))
 	}
 }
 impl Solve for Dual {
-	fn solve(self, _td: Decomposition, k: usize) -> Option<Assignment> {
-		Some(vec![true; self.size()])
+	fn solve(self, _td: Decomposition, k: usize) -> Option<(Assignment, usize)> {
+		Some((vec![true; self.size()], 0))
 	}
 }
 impl Solve for Incidence {
-	fn solve(self, td: Decomposition, k: usize) -> Option<Assignment> {
+	fn solve(self, td: Decomposition, k: usize) -> Option<(Assignment, usize)> {
 		let nice_td = make_nice(&self, td);
 		
 		let tree_index       = tree_index(&nice_td, k);
@@ -171,9 +171,10 @@ impl Solve for Incidence {
 				return None;
 			}
 		}
-		
-		println!("{:?}", config_stack);
-		Some(vec![true; self.size()])
+
+		let score = config_stack.pop().unwrap().0[0].1;
+		println!("c score: {}", score);
+		Some((vec![true; self.size()], score))
 	}
 }
 

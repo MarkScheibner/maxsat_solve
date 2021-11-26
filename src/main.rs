@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::{fs, io::{self, Read}};
+// use fasttw::print;
 use pico_args::Arguments;
 use rand::{ rngs::StdRng, SeedableRng };
 use solver::Solve;
@@ -52,7 +53,7 @@ fn main() -> anyhow::Result<()>{
 }
 
 fn solve_formulas<T>(sub_formulas: Vec<parser::Formula>) -> Option<Vec<Vec<bool>>> 
-where T: Solve + Graph + From<parser::Formula>{
+where T: Solve + Graph + From<parser::Formula> + std::fmt::Debug {
 	let mut rng = StdRng::seed_from_u64(crate::fasttw::SEED);
 	let mut assignments = Vec::with_capacity(sub_formulas.len());
 
@@ -68,9 +69,10 @@ where T: Solve + Graph + From<parser::Formula>{
 		let mut file = fs::File::create(format!("../graph_{}.td", i)).unwrap();
 		write!(file, "{}", fasttw::print(&td, k, graph.size())).unwrap();
 		let local_solution = graph.solve(td, k)?;
-		assignments.push(local_solution);
+		assignments.push(local_solution.0);
 	}
 
+	println!("Found an assignment for all parts");
 	Some(assignments)
 }
 
