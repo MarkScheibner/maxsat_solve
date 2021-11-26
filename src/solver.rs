@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use itertools::Itertools;
-use num::pow;
 
 use crate::graph::*;
 use crate::fasttw::Decomposition;
@@ -9,9 +8,10 @@ use crate::fasttw::Decomposition;
 type Assignment = Vec<bool>;
 type NiceDecomposition = Vec<(usize, Node)>;
 // assignment, score, fingerprint
-type Configuration = (Vec<bool>, usize, usize);
+// assignment (bit-map), score
+type Configuration = (usize, usize);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Node {
 	Leaf,
 	Introduce(usize),
@@ -41,139 +41,132 @@ impl Solve for Incidence {
 		
 		let tree_index       = tree_index(&nice_td, k);
 		let traversal        = postorder(&nice_td);
-		let mut config_stack = Vec::<Vec<Configuration>>::new();
+		let mut config_stack = Vec::<(Vec<Configuration>, usize)>::new();
 		let traversal_len    = traversal.len();
 		for (step, i) in traversal.into_iter().enumerate() {
 			let (_, node) = &nice_td[i];
 			match node {
 				&Leaf => {
-					// push first empty configuration
-					config_stack.push(vec![(vec![false; k], 0, 0)]);
+					// push empty configuration
+					config_stack.push((vec![(0, 0)], 0));
 				},
 				&Introduce(clause) if self.is_clause(clause) => {
-					// do nothing...
-				},
-				&Introduce(var) => {
 					let mut config = config_stack.pop().unwrap();
-					let mut copies = Vec::with_capacity(config.len());
-					// duplicate each assignment and set var to true and false
-					for (a, s, f) in &mut config {
-						let mut copy = a.clone();
-						copy[tree_index[var]] = true;
-						let new_fingerprint = *f | (1 << tree_index[var]);
-						copies.push((copy, *s, new_fingerprint));
-					}
-					for copy in copies {
-						config.push(copy);
-					}
+					// mark bit as clause
+					set_bit(&mut config.1, tree_index[clause], true);
 
 					config_stack.push(config);
 				},
+				&Introduce(var) => {
+					let (mut config, clause_mask) = config_stack.pop().unwrap();
+					let  mut copies               = Vec::with_capacity(config.len());
+
+					// duplicate each assignment and set var to true in copy
+					for (a, s) in &mut config {
+						let mut copy = a.clone();
+						set_bit(&mut copy, tree_index[var], true);
+						copies.push((copy, *s));
+					}
+					// append copies to config
+					config.extend(copies);
+
+					config_stack.push((config, clause_mask));
+				},
 				&Forget(clause) if self.is_clause(clause) => {
-					let mut config = config_stack.pop().unwrap();
-					let mut reject = Vec::new();
-					for (i, (a, s, f)) in config.iter_mut().enumerate() {
-						if !a[tree_index[clause]] && self.is_hard(clause) {
-							// clause is not true, "reject"
-							reject.push(i);
-						} else {
-							// reset the bit for clause to false, update fingerprint and score accordingly
-							a[tree_index[clause]] = false;
-							*f &= !(1 << tree_index[clause]);
+					let (mut config, mut clause_mask) = config_stack.pop().unwrap();
+					let  mut rejected                 = vec![];
+					for (i, (a, s)) in config.iter_mut().enumerate() {
+						if get_bit(a, tree_index[clause]) {
+							// clause is true: unset bit and update score
+							set_bit(a, tree_index[clause], false);
 							*s += if self.is_hard(clause) { 0 } else { self.weight(clause) };
+						} else if self.is_hard(clause) {
+							// clause is not true, but is a hard clause: reject assignment
+							rejected.push(i);
 						}
 					}
+					// unmark clause-bit
+					set_bit(&mut clause_mask, tree_index[clause], false);
+
 					// remove rejected configs
-					reject.reverse();
-					for i in reject {
+					rejected.reverse();
+					for i in rejected {
 						config.swap_remove(i);
 					}
 
-					config_stack.push(config);
+					config_stack.push((config, clause_mask));
 				},
 				&Forget(var) => {
-					let mut config = config_stack.pop().unwrap();
-					for (a, _, f) in &mut config {
-						if a[tree_index[var]] {
-							// update fingerprint if setting var to false changes assignment
-							*f &= !(1 << tree_index[var]);
-						}
-						a[tree_index[var]] = false;
+					let (mut config, clause_mask) = config_stack.pop().unwrap();
+					for (a, _) in &mut config {
+						// unset bit of variable
+						set_bit(a, tree_index[var], false);
 					}
 
-					let max_fingerprint = config.iter().map(|c| c.2).max().unwrap();
+					let max_fingerprint = config.iter().map(|(a, _)| a).max().unwrap();
 					// we should save every byte possible here, so we also use usize instead of Option<usize>
 					// for this we use 0 as None and i+1 as Some(i)
-					let mut values      = vec![0; max_fingerprint+1];
-					for (i, &(_, s, f)) in config.iter().enumerate() {
-						match values[f] {
-							// None
-							0 => {
-								values[f] = i+1;
-							},
-							// Some(i+1)
-							some_i => {
-								// TODO the rust compiler complains about not knowing the type of config[some_i].1 by
-								// itself, so we have to get the score of other in this roundabout way
-								let other: &(Vec<bool>, usize, usize) = &config[some_i-1];
-								let other_s = other.1;
-								if other_s < s {
-									// this one is better
-									values[f] = i+1;
-								}
+					let mut indexes     = vec![0; max_fingerprint+1];
+					for (i, &(a, s)) in config.iter().enumerate() {
+						if indexes[a] == 0 { // None
+							indexes[a] = i+1;
+						} else {            // Some(i+1)
+							if config[indexes[a] - 1].1 < s {
+								// this one is better
+								indexes[a] = i+1
 							}
 						}
 					}
 
 					// deduplicate
 					for i in (0..config.len()).rev() {
-						let fingerprint = config[i].2;
-						if values[fingerprint] != i+1 {
+						let fingerprint = config[i].0;
+						if indexes[fingerprint] != i+1 {
 							// if an assignment does not find its own index, another assignment with the same
 							// fingerprint had a better score, so we can remove this assigmnent
 							config.swap_remove(i);
 						}
 					}
-
-					config_stack.push(config);
+					config_stack.push((config, clause_mask));
 				},
 				&Edge(u, v)  => {
-					let mut config = config_stack.pop().unwrap();
-					let clause     = if u < v { u } else { v };
-					let var        = if u < v { v } else { u };
-					let negated    = var == u;
-					let var_name   = var - self.num_clauses + 1;
-					let clause_name= clause + 2;
+					let (mut config, clause_mask) = config_stack.pop().unwrap();
+					let clause                    = if u < v { u } else { v };
+					let var                       = if u < v { v } else { u };
+					let negated                   = var == u;
 
-					for (a, _, f) in &mut config {
-						// evaluate literal based on assignment of var
-						let literal_val = if negated { !a[tree_index[var]] } else { a[tree_index[var]] };
-						// toggle the clause if the literal sets it to true
-						if !a[tree_index[clause]] && literal_val {
-							a[tree_index[clause]] = true;
-							*f |= 1 << tree_index[clause];
+					for (a, _) in &mut config {
+						// set clause to true if the literal represented by the edge is true
+						let literal = if negated { !get_bit(a, tree_index[var]) } else { get_bit(a, tree_index[var]) };
+						if literal {
+							set_bit(a, tree_index[clause], true);
 						}
 					}
 
-					config_stack.push(config);
+					config_stack.push((config, clause_mask));
 				},
 				&Join => {
-					let left_configs  = config_stack.pop().unwrap();
-					let right_configs = config_stack.pop().unwrap();
-					let mut values    = vec![None; pow(2, k)];
-					for (_, s, f) in left_configs {
-						values[f] = Some(s)
+					let (left_config, clauses)   = config_stack.pop().unwrap();
+					let (right_config, _)        = config_stack.pop().unwrap();
+					let max_fingerprint          = left_config.iter().map(|(a, _)| a).max().unwrap();
+					let mut values    = vec![None; max_fingerprint+1];
+					for (a, s) in left_config {
+						// we only care about assignment of variables here. this should still be a unique fingerprint
+						let variable_assignment = a & !clauses;
+						values[variable_assignment] = Some((a, s))
 					}
-					// keep only those assignments that are in left and in right
-					let intersection = right_configs.into_iter().filter_map(|(a, s, f)| {
-						// we can just add the scpres, since the shared clauses have not yet added their weight
-						values[f].map(|other_s| (a, s + other_s, f))
+					// keep only those variable assignments that are in left and in right
+					let intersection = right_config.into_iter().filter_map(|(a, s)| {
+						let variable_assigmnent = a & !clauses;
+						// we can OR the assignments, since they only differ for the clauses
+						// we can add the scores, since the shared clauses have not yet contributed their weight
+						values[variable_assigmnent].map(|(other_a, other_s)| (a | other_a, s + other_s))
 					}).collect_vec();
-					config_stack.push(intersection);
+					config_stack.push((intersection, clauses));
 				}
 			}
 
-			if config_stack.last().map_or(true, |c| c.is_empty()) {
+			if config_stack.last().map_or(true, |(config, _)| config.is_empty()) {
 				println!("No solution found after {}/{} steps", step, traversal_len);
 				return None;
 			}
@@ -340,4 +333,16 @@ fn tree_index(tree: &NiceDecomposition, k: usize) -> Vec<usize> {
 	}
 	
 	index
+}
+
+fn set_bit(bitmap: &mut usize, bit: usize, value: bool) {
+	if value {
+		*bitmap |= 1 << bit;
+	} else {
+		*bitmap &= !(1 << bit);
+	}
+}
+
+fn get_bit(bitmap: &usize, bit: usize) -> bool {
+	(bitmap & (1 << bit)) != 0
 }
