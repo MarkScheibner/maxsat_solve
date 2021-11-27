@@ -59,43 +59,16 @@ impl Solve for Incidence {
 				},
 				&Introduce(var) => {
 					let (mut config, clause_mask) = config_stack.pop().unwrap();
-					let  mut copies               = Vec::with_capacity(config.len());
-
-					// duplicate each assignment and set var to true in copy
-					for (a, s, v) in &mut config {
-						let mut copy   = a.clone();
-						set_bit(&mut copy, tree_index[var], true);
-						let mut v_copy = v.clone();
-						v_copy.push(var);
-						copies.push((copy, *s, v_copy));
-					}
-					// append copies to config
-					config.extend(copies);
-
+					duplicate_assignments(&mut config, var, &tree_index);
 					config_stack.push((config, clause_mask));
 				},
 				&Forget(clause) if self.is_clause(clause) => {
 					let (mut config, mut clause_mask) = config_stack.pop().unwrap();
-					let  mut rejected                 = vec![];
-					for (i, (a, s, _)) in config.iter_mut().enumerate() {
-						if get_bit(a, tree_index[clause]) {
-							// clause is true: unset bit and update score
-							set_bit(a, tree_index[clause], false);
-							*s += if self.is_hard(clause) { 0 } else { self.weight(clause) };
-						} else if self.is_hard(clause) {
-							// clause is not true, but is a hard clause: reject assignment
-							rejected.push(i);
-						}
-					}
+					reject_unfulfilled(&mut config, clause, &tree_index, &self);
+					
 					// unmark clause-bit
 					set_bit(&mut clause_mask, tree_index[clause], false);
-
-					// remove rejected configs
-					rejected.reverse();
-					for i in rejected {
-						config.swap_remove(i);
-					}
-
+					
 					config_stack.push((config, clause_mask));
 				},
 				&Forget(var) => {
@@ -104,31 +77,8 @@ impl Solve for Incidence {
 						// unset bit of variable
 						set_bit(a, tree_index[var], false);
 					}
-
-					let max_fingerprint = config.iter().map(|(a, _, _)| a).max().unwrap();
-					// we should save every byte possible here, so we also use usize instead of Option<usize>
-					// for this we use 0 as None and i+1 as Some(i)
-					let mut indexes     = vec![0; max_fingerprint+1];
-					for (i, &(a, s, _)) in config.iter().enumerate() {
-						if indexes[a] == 0 { // None
-							indexes[a] = i+1;
-						} else {            // Some(i+1)
-							if config[indexes[a] - 1].1 < s {
-								// this one is better
-								indexes[a] = i+1
-							}
-						}
-					}
-
-					// deduplicate
-					for i in (0..config.len()).rev() {
-						let fingerprint = config[i].0;
-						if indexes[fingerprint] != i+1 {
-							// if an assignment does not find its own index, another assignment with the same
-							// fingerprint had a better score, so we can remove this assigmnent
-							config.swap_remove(i);
-						}
-					}
+					deduplicate(&mut config);
+					
 					config_stack.push((config, clause_mask));
 				},
 				&Edge(u, v)  => {
@@ -148,28 +98,11 @@ impl Solve for Incidence {
 					config_stack.push((config, clause_mask));
 				},
 				&Join => {
-					let (left_config, clauses)   = config_stack.pop().unwrap();
-					let (right_config, _)        = config_stack.pop().unwrap();
-					let  max_fingerprint         = left_config.iter().map(|(a, _, _)| a).max().unwrap();
-					let  mut indexes             = vec![0; max_fingerprint+1];
-					for (i, (a, _ , _)) in left_config.iter().enumerate() {
-						// we only care about assignment of variables here. this should still be a unique fingerprint
-						let variable_assignment = a & !clauses;
-						indexes[variable_assignment] = i+1
-					}
-					// keep only those variable assignments that are in left and in right
-					let intersection = right_config.into_iter().filter_map(|(a, s, v)| {
-						let variable_assignment = a & !clauses;
-						if variable_assignment > *max_fingerprint || indexes[variable_assignment] == 0 {
-							None
-						} else {
-							// we can OR the assignments, since they only differ for the clauses
-							// we can add the scores, since the shared clauses have not yet contributed their weight
-							let  other_index                = indexes[variable_assignment] - 1;
-							let (other_a, other_s, other_v) = &left_config[other_index];
-							Some((a | other_a, s + other_s, v.iter().chain(other_v.iter()).unique().copied().collect()))
-						}
-					}).collect_vec();
+					let (left_config, clauses) = config_stack.pop().unwrap();
+					let (right_config, _)      = config_stack.pop().unwrap();
+					
+					let intersection           = config_intersection(left_config, right_config, clauses);
+					
 					config_stack.push((intersection, clauses));
 				}
 			}
@@ -197,7 +130,88 @@ impl Solve for Incidence {
 		Some((assignment, score))
 	}
 }
+
+fn duplicate_assignments(config: &mut Vec<Configuration>, var: usize, tree_index: &Vec<usize>) {
+	let  mut copies = Vec::with_capacity(config.len());
+
+	// duplicate each assignment and set var to true in copy
+	for (a, s, v) in config.iter_mut() {
+		let mut copy   = a.clone();
+		set_bit(&mut copy, tree_index[var], true);
+		let mut v_copy = v.clone();
+		v_copy.push(var);
+		copies.push((copy, *s, v_copy));
 	}
+	// append copies to config
+	config.extend(copies);
+}
+fn reject_unfulfilled(config: &mut Vec<Configuration>, clause: usize, tree_index: &Vec<usize>, graph: &Incidence) {
+	let mut rejected = vec![];
+
+	for (i, (a, s, _)) in config.iter_mut().enumerate() {
+		if get_bit(a, tree_index[clause]) {
+			// clause is true: unset bit and update score
+			set_bit(a, tree_index[clause], false);
+			*s += if graph.is_hard(clause) { 0 } else { graph.weight(clause) };
+		} else if graph.is_hard(clause) {
+			// clause is not true, but is a hard clause: reject assignment
+			rejected.push(i);
+		}
+	}
+	
+	// remove rejected configs
+	rejected.reverse();
+	for i in rejected {
+		config.swap_remove(i);
+	}
+}
+fn deduplicate(config: &mut Vec<Configuration>) {
+	let max_fingerprint = config.iter().map(|(a, _, _)| a).max().unwrap();
+	// we should save every byte possible here, so we also use usize instead of Option<usize>
+	// for this we use 0 as None and i+1 as Some(i)
+	let mut indexes     = vec![0; max_fingerprint+1];
+	for (i, &(a, s, _)) in config.iter().enumerate() {
+		if indexes[a] == 0 { // None
+			indexes[a] = i+1;
+		} else {            // Some(i+1)
+			if config[indexes[a] - 1].1 < s {
+				// this one is better
+				indexes[a] = i+1
+			}
+		}
+	}
+
+	// deduplicate
+	for i in (0..config.len()).rev() {
+		let fingerprint = config[i].0;
+		if indexes[fingerprint] != i+1 {
+			// if an assignment does not find its own index, another assignment with the same
+			// fingerprint had a better score, so we can remove this assigmnent
+			config.swap_remove(i);
+		}
+	}
+}
+fn config_intersection(left: Vec<Configuration>, right: Vec<Configuration>, clauses: usize) -> Vec<Configuration> {
+	let  max_fingerprint = left.iter().map(|(a, _, _)| a).max().unwrap();
+	let  mut indexes     = vec![0; max_fingerprint+1];
+	for (i, (a, _ , _)) in left.iter().enumerate() {
+		// we only care about assignment of variables here. this should still be a unique fingerprint
+		let variable_assignment = a & !clauses;
+		indexes[variable_assignment] = i+1
+	}
+	// keep only those variable assignments that are in left and in right
+	right.into_iter().filter_map(|(a, s, v)| {
+		let variable_assignment = a & !clauses;
+		if variable_assignment > *max_fingerprint || indexes[variable_assignment] == 0 {
+			None
+		} else {
+			// we can OR the assignments, since they only differ for the clauses
+			// we can add the scores, since the shared clauses have not yet contributed their weight
+			let  other_index                = indexes[variable_assignment] - 1;
+			let (other_a, other_s, other_v) = &left[other_index];
+			Some((a | other_a, s + other_s, v.iter().chain(other_v.iter()).unique().copied().collect()))
+		}
+	}).collect()
 }
 
 fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
