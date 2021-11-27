@@ -58,6 +58,7 @@ where T: Solve + Graph + From<parser::Formula> + std::fmt::Debug {
 	let mut assignments = Vec::with_capacity(sub_formulas.len());
 
 	for (i, formula) in sub_formulas.into_iter().enumerate() {
+		let copy = formula.clone();
 		let graph = T::from(formula);
 		let mut decomposition_graph = fasttw::Graph::new(graph.size());
 		graph.list_edges().iter().for_each(|(u, v)| decomposition_graph.add_edge(*u, *v));
@@ -69,6 +70,8 @@ where T: Solve + Graph + From<parser::Formula> + std::fmt::Debug {
 		let mut file = fs::File::create(format!("../graph_{}.td", i)).unwrap();
 		write!(file, "{}", fasttw::print(&td, k, graph.size())).unwrap();
 		let local_solution = graph.solve(td, k)?;
+		let test = copy.test_assignment(&local_solution.0);
+		println!("{:?}", test);
 		assignments.push(local_solution.0);
 	}
 

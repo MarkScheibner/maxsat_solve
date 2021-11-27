@@ -243,9 +243,9 @@ impl From<Formula> for Incidence {
 		Incidence {
 			inner: DirectedGraph {
 				size,
+				edge_count,
 				successor,
-				predecessor,
-				edge_count
+				predecessor
 			},
 			weights,
 			top,
@@ -262,6 +262,13 @@ impl Incidence {
 	}
 	pub fn weight(&self, v: usize) -> usize {
 		self.weights[v]
+	}
+	pub fn unfulfilled_clauses(&self, assignment: &Vec<bool>) -> Vec<usize> {
+		(0..self.num_clauses).filter(|&clause| {
+			self.is_hard(clause)
+			&& !self.inner.successor[clause].iter().any(|v| assignment[*v-self.num_clauses])
+			&& !self.inner.predecessor[clause].iter().any(|v| !assignment[*v-self.num_clauses]) 
+		}).collect()
 	}
 }
 

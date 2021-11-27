@@ -19,7 +19,7 @@ enum WorkElement {
 type WorkStack = Vec<WorkElement>;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Formula {
 	clauses: Vec<Clause>,
 	weights: Vec<usize>,
@@ -285,6 +285,27 @@ impl Formula {
 		&self.weights
 	}
 
+	pub fn test_assignment(&self, assignment: &Vec<bool>) -> Option<usize>{
+		let mut score = 0;
+		for (clause, &weight) in self.clauses.iter().zip(self.weights.iter()) {
+			let clause_value = clause.iter().any(|&l| {
+				let var = l.abs() as usize - 1;
+				if l < 0 {
+					!assignment[var]
+				} else {
+					assignment[var]
+				}
+			});
+			if clause_value && weight < self.top {
+				score += weight
+			}
+			if !clause_value && weight == self.top {
+				return None;
+			}
+		}
+
+		Some(score)
+	}
 }
 
 impl From<String> for Formula {
