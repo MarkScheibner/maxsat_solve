@@ -60,14 +60,16 @@ impl Solve for Incidence {
 				&Introduce(var) => {
 					let (mut config, clause_mask) = config_stack.pop().unwrap();
 					duplicate_assignments(&mut config, var, &tree_index);
+
 					config_stack.push((config, clause_mask));
 				},
 				&Forget(clause) if self.is_clause(clause) => {
 					let (mut config, mut clause_mask) = config_stack.pop().unwrap();
 					reject_unfulfilled(&mut config, clause, &tree_index, &self);
-					
+
 					// unmark clause-bit
 					set_bit(&mut clause_mask, tree_index[clause], false);
+					deduplicate(&mut config);
 					
 					config_stack.push((config, clause_mask));
 				},
@@ -94,6 +96,7 @@ impl Solve for Incidence {
 							set_bit(a, tree_index[clause], true);
 						}
 					}
+					deduplicate(&mut config);
 
 					config_stack.push((config, clause_mask));
 				},
@@ -126,7 +129,8 @@ impl Solve for Incidence {
 		println!("c num of true variables: {}", variables.len());
 		println!("c assignment: {:?}", &assignment);
 		let test = self.unfulfilled_clauses(&assignment);
-		println!("c test result: {:?}", test);
+		println!("c test result: {:?}", &test);
+		println!("c len of test result: {:?}", test.len());
 		Some((assignment, score))
 	}
 }
@@ -173,7 +177,7 @@ fn deduplicate(config: &mut Vec<Configuration>) {
 	for (i, &(a, s, _)) in config.iter().enumerate() {
 		if indexes[a] == 0 { // None
 			indexes[a] = i+1;
-		} else {            // Some(i+1)
+		} else {             // Some(i+1)
 			if config[indexes[a] - 1].1 < s {
 				// this one is better
 				indexes[a] = i+1
