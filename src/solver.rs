@@ -196,26 +196,29 @@ fn deduplicate(config: &mut Vec<Configuration>) {
 	}
 }
 fn config_intersection(left: Vec<Configuration>, right: Vec<Configuration>, clauses: usize) -> Vec<Configuration> {
-	let  max_fingerprint = left.iter().map(|(a, _, _)| a).max().unwrap();
-	let  mut indexes     = vec![0; max_fingerprint+1];
+	let  max_fingerprint = left.iter().map(|(a, _, _)| a & !clauses).max().unwrap();
+	let  mut indexes     = vec![Vec::new(); max_fingerprint+1];
 	for (i, (a, _ , _)) in left.iter().enumerate() {
-		// we only care about assignment of variables here. this should still be a unique fingerprint
+		// we only care about assignment of variables here.
 		let variable_assignment = a & !clauses;
-		indexes[variable_assignment] = i+1
+		indexes[variable_assignment].push(i);
 	}
 	// keep only those variable assignments that are in left and in right
 	right.into_iter().filter_map(|(a, s, v)| {
 		let variable_assignment = a & !clauses;
-		if variable_assignment > *max_fingerprint || indexes[variable_assignment] == 0 {
+		if variable_assignment > max_fingerprint || indexes[variable_assignment].is_empty() {
 			None
 		} else {
-			// we can OR the assignments, since they only differ for the clauses
-			// we can add the scores, since the shared clauses have not yet contributed their weight
-			let  other_index                = indexes[variable_assignment] - 1;
-			let (other_a, other_s, other_v) = &left[other_index];
-			Some((a | other_a, s + other_s, v.iter().chain(other_v.iter()).unique().copied().collect()))
+			// since an assignment can have different values for clauses (due to forgotten variables) we need to look
+			// at the bitwise OR of every such clause assignment
+			let mut bitwise_or = Vec::with_capacity(indexes[variable_assignment].len());
+			for &other_index in &indexes[variable_assignment] {
+				let (other_a, other_s, other_v) = &left[other_index];
+				bitwise_or.push((a | other_a, s + other_s, v.iter().chain(other_v.iter()).unique().copied().collect()));
+			}
+			Some(bitwise_or)
 		}
-	}).collect()
+	}).flatten().collect()
 }
 
 fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
