@@ -117,21 +117,13 @@ impl Solve for Incidence {
 		}
 
 		let last           = config_stack.pop().unwrap();
-		let last           = &last.0[0];
-		let score          = last.1;
-		let variables      = last.2.iter().map(|v| v - self.num_clauses).sorted().collect::<Vec<_>>();
+		let (_, score, variables) = &last.0[0];
 		let mut assignment = vec![false; self.size() - self.num_clauses];
-		for &v in &variables {
-			assignment[v] = true;
+		for v in variables {
+			let variable_index = v - self.num_clauses;
+			assignment[variable_index] = true;
 		}
-		println!("c score: {}", score);
-		println!("c true variables: {:?}", variables.iter().map(|v| v+1).collect::<Vec<_>>());
-		println!("c num of true variables: {}", variables.len());
-		println!("c assignment: {:?}", &assignment);
-		let test = self.unfulfilled_clauses(&assignment);
-		println!("c test result: {:?}", &test);
-		println!("c len of test result: {:?}", test.len());
-		Some((assignment, score))
+		Some((assignment, *score))
 	}
 }
 
