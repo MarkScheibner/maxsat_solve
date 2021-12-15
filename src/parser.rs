@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::graph::{Dual, connected_components};
 
 type Clause = Vec<isize>;
-type Renaming = MetroHashMap<usize, usize>;
+type Renaming = Vec<usize>;
 type PartialAssignment = Vec<Option<bool>>;
 // (positive occurences, negative occurences, [(clause, index in clause)])
 type OccurenceList = Vec<(Cell<usize>, Cell<usize>, Vec<(usize, usize)>)>;
@@ -29,20 +29,23 @@ pub struct Formula {
 }
 
 /// Computes and applies a renaming so that variable names are in 0..n again
+/// The returned renaming maps the new names to the old names
 fn compute_renaming(clauses: &mut [Clause]) -> Renaming {
+	// list old names in vec such that the old name of variable i is at position i-1
 	let renaming: Renaming = clauses.iter()
 	                                .flatten()
 	                                .map(|l| l.abs() as usize)
 	                                .unique()
-	                                .enumerate()
-	                                .map(|(k, v)| (v, k+1))
 	                                .collect();
+	
+	// reverse to map old names to new names for applying the renaming
+	let revers_renaming: MetroHashMap<_, _> = renaming.iter().enumerate().map(|(k, v)| (v, k+1)).collect();
 	
 	for clause in clauses.iter_mut() {
 		// apply renaming
 		for literal in clause {
 			let literal_var = literal.abs() as usize;
-			let renamed_var = renaming[&literal_var] as isize;
+			let renamed_var = revers_renaming[&literal_var] as isize;
 			*literal = literal.signum() * renamed_var;
 		}
 	}
