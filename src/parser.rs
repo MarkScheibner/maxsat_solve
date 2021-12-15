@@ -253,7 +253,7 @@ impl Formula {
 		let intermediate = Dual::from(self);
 		let components = connected_components(&intermediate);
 
-		let mut formulae = Vec::with_capacity(components.len());
+		let mut formulas = Vec::with_capacity(components.len());
 		let mut renamings = Vec::with_capacity(components.len());
 
 		// decompose into subformulas based on components
@@ -265,7 +265,7 @@ impl Formula {
 			let renaming = compute_renaming(&mut component_clauses);
 			let n_vars = renaming.len();
 
-			formulae.push(Formula {
+			formulas.push(Formula {
 				clauses: component_clauses,
 				weights: component_clause_weights,
 				n_vars,
@@ -277,7 +277,7 @@ impl Formula {
 		}
 
 
-		(formulae, renamings)
+		(formulas, renamings)
 	}
 
 	pub fn get_clauses(&self) -> &Vec<Clause> {
