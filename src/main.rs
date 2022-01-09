@@ -80,6 +80,7 @@ where T: Solve + Graph + From<Formula> + std::fmt::Debug {
 	let mut score       = 0;
 
 	for formula in sub_formulas.into_iter() {
+		let f_copy                  = formula.clone();
 		let graph                   = T::from(formula);
 
 		// build treedecomposition
@@ -95,7 +96,7 @@ where T: Solve + Graph + From<Formula> + std::fmt::Debug {
 
 		// solve instance
 		let k        = td.iter().map(|(_, bag)| bag.len()).max().unwrap_or(0);
-		let solution = graph.solve(td, k)?;
+		let solution = graph.solve(td, k, f_copy)?;
 
 		// add to other solutions
 		assignments.push(solution.0);

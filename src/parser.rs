@@ -288,6 +288,15 @@ impl Formula {
 		&self.weights
 	}
 
+	pub fn is_hard(&self, clause: &usize) -> bool {
+		self.weights[*clause] == self.top
+	}
+
+	pub fn weight(&self, clause: &usize) -> usize {
+		self.weights[*clause]
+	}
+
+
 	pub fn test_assignment(&self, assignment: &Vec<bool>) -> Option<usize>{
 		let mut score = 0;
 		for (clause, &weight) in self.clauses.iter().zip(self.weights.iter()) {
