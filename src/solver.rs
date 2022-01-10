@@ -98,7 +98,7 @@ impl Solve for Primal {
 								return None;
 							}
 						}
-						set_bit(&mut a, var, false);
+						set_bit(&mut a, tree_index[var], false);
 						
 						// retain only hard clauses and those that have nothing to do with var
 						c.retain(|c| formula.is_hard(c) || !(positive[var].contains(c) || negative[var].contains(c)));
