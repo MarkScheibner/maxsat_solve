@@ -108,14 +108,14 @@ impl Solve for Primal {
 					// deduplicate
 					let max_fingerprint = configs.iter().map(|((a, _, _), _)| a).max().unwrap();
 					let mut indexes = vec![0; max_fingerprint + 1];
-					for (i, ((a, s, _), c)) in configs.iter().enumerate() {
+					for (i, ((a, s, _), _)) in configs.iter().enumerate() {
 						if indexes[*a] == 0 {
 							indexes[*a] = i + 1;
 						} else {
 							let index = indexes[*a] - 1;
 							let other_score = configs[index].0.1;
 							if *s > other_score {
-								indexes[*a] = i;
+								indexes[*a] = i+1;
 							}
 						}
 					}
