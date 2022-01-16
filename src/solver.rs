@@ -50,8 +50,8 @@ impl Solve for Primal {
 		let positive = positive;
 		let negative = negative;
 		
-		let nice_td = make_nice(&self, td);
-		let tree_index = tree_index(&nice_td, k);
+		let nice_td = make_nice(&self, td, false);
+		let tree_index = tree_index(&nice_td, k, formula.n_vars);
 		let traversal = postorder(&nice_td);
 		let mut config_stack = Vec::<Vec<PConfiguration>>::new();
 		for i in traversal {
@@ -179,9 +179,9 @@ impl Solve for Dual {
 
 impl Solve for Incidence {
 	fn solve(self, td: Decomposition, k: usize, _formula: Formula) -> Option<(Assignment, usize)> {
-		let nice_td = make_nice(&self, td);
+		let nice_td = make_nice(&self, td, true);
 		
-		let tree_index       = tree_index(&nice_td, k);
+		let tree_index       = tree_index(&nice_td, k, self.size());
 		let traversal        = postorder(&nice_td);
 		let mut config_stack = Vec::<(Vec<Configuration>, usize)>::new();
 		let traversal_len    = traversal.len();
@@ -355,7 +355,7 @@ fn config_intersection(left: Vec<Configuration>, right: Vec<Configuration>, clau
 	}).flatten().collect()
 }
 
-fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
+fn make_nice(graph: &impl Graph, td: Decomposition, very_nice: bool) -> NiceDecomposition {
 	enum Work<'a> {
 		// parent node, children
 		Join(usize,  &'a [usize]),
@@ -409,15 +409,17 @@ fn make_nice(graph: &impl Graph, td: Decomposition) -> NiceDecomposition {
 				for &forget in remove {
 					nice_decomposition.push((parent, Forget(forget)));
 					parent = nice_decomposition.len() - 1;
-					// add all edges that are incident to forget
-					for &node in src_bag {
-						// TODO if both node and forget are in remove, this edge will be added twice
-						if graph.edge(node, forget) {
-							nice_decomposition.push((parent, Edge(node, forget)));
-							parent += 1;
-						} else if graph.edge(forget, node) {
-							nice_decomposition.push((parent, Edge(forget, node)));
-							parent += 1;
+					if very_nice {
+						// add all edges that are incident to forget
+						for &node in src_bag {
+							// TODO if both node and forget are in remove, this edge will be added twice
+							if graph.edge(node, forget) {
+								nice_decomposition.push((parent, Edge(node, forget)));
+								parent += 1;
+							} else if graph.edge(forget, node) {
+								nice_decomposition.push((parent, Edge(forget, node)));
+								parent += 1;
+							}
 						}
 					}
 				}
@@ -477,9 +479,9 @@ fn postorder<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
 	traversal
 }
 
-fn tree_index(tree: &NiceDecomposition, k: usize) -> Vec<usize> {
+fn tree_index(tree: &NiceDecomposition, k: usize, size: usize) -> Vec<usize> {
 	let (root, children) = reverse(tree);
-	let mut index        = vec![0; tree.len()];
+	let mut index        = vec![0; size];
 	let mut free         = vec![(0..k).collect_vec()];
 	let mut work_stack   = vec![root];
 	while let Some(node) = work_stack.pop() {
