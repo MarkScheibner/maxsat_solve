@@ -320,7 +320,7 @@ impl Formula {
 			}
 		}
 
-		Some(score)
+		Some(self.max_score() - score)
 	}
 }
 
