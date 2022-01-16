@@ -296,6 +296,10 @@ impl Formula {
 		self.weights[*clause]
 	}
 
+	pub fn max_score(&self) -> usize {
+		self.weights.iter().filter(|&&w| w < self.top).sum()
+	}
+
 
 	pub fn test_assignment(&self, assignment: &Vec<bool>) -> Option<usize>{
 		let mut score = 0;

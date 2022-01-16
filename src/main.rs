@@ -37,6 +37,7 @@ fn main() -> anyhow::Result<()>{
 	// parse, preprocess and split formula
 	let mut formula               = parser::Formula::from(contents);
 	let copy = formula.clone();
+	let max_score                 = formula.max_score();
 	let size_before               = formula.n_clauses;
 	let (assignment, renaming)    = formula.preprocess().unwrap();
 	let _size_reduction           = size_before - formula.n_clauses;
@@ -62,7 +63,7 @@ fn main() -> anyhow::Result<()>{
 			println!("c Testing assignment gives: {:?}", copy.test_assignment(&assignment));
 			
 			println!("s OPTIMUM FOUND");
-			println!("o {}", score); // TODO invert score. format expects number of falsified softs
+			println!("o {}", max_score - score);
 			println!("v {}", format_assignment(assignment));
 		},
 		None => {
