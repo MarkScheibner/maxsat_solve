@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use itertools::Itertools;
-use metrohash::MetroHashSet;
+
 
 use crate::graph::*;
 use crate::fasttw::Decomposition;
@@ -10,9 +10,6 @@ type Assignment = Vec<bool>;
 type NiceDecomposition = Vec<(usize, Node)>;
 // assignment (bit-map), score, true variables
 type Configuration = (usize, usize, Vec<usize>);
-type IConfiguration = Configuration;
-// configuration, satisfied clauses
-type PConfiguration = (Configuration, MetroHashSet<usize>);
 
 #[derive(Clone, Copy, Debug)]
 enum Node {
@@ -34,52 +31,30 @@ impl Solve for Primal {
 		//println!("{:?}", &td);
 		
 		// for each variable list the clauses which contain that variable as a positive / negative literal
-		let mut positive = vec![MetroHashSet::default(); formula.n_vars];
-		let mut negative = vec![MetroHashSet::default(); formula.n_vars];
-		for (i, clause) in formula.get_clauses().iter().enumerate() {
-			for &literal in clause {
-				let var = literal.abs() as usize - 1;
-				if literal < 0 {
-					negative[var].insert(i);
-				} else {
-					positive[var].insert(i);
-				}
-			}
-		}
-		// make them immutable
-		let positive = positive;
-		let negative = negative;
+		let occurences = formula.variable_occurences();
 		
 		let nice_td = make_nice(&self, td, false);
 		let tree_index = tree_index(&nice_td, k, formula.n_vars);
 		let traversal = postorder(&nice_td);
-		let mut config_stack = Vec::<Vec<PConfiguration>>::new();
-		for i in traversal {
-			let (_, node) = &nice_td[i];
+		let mut config_stack = Vec::<Vec<Configuration>>::new();
+		// keep track of clauses where not all variables are active
+		let mut forgotten = vec![false; formula.n_clauses]; // TODO make this a bitvec
+		for i in traversal.iter() {
+			let (_, node) = &nice_td[*i];
 			match node {
 				&Leaf => {
 					// push empty configuration
-					config_stack.push(vec![((0, 0, vec![]), MetroHashSet::default())]);
+					config_stack.push(vec![(0, 0, vec![])]);
 				}
 				&Introduce(var) => {
-					let configs  = config_stack.pop().unwrap();
+					let mut configs  = config_stack.pop().unwrap();
 
 					// clone configs and set bit for var to 1
-					let clones = configs.iter().cloned().map(|((mut a, s, mut v), c)| {
+					let clones = configs.iter().cloned().map(|(mut a, s, mut v)| {
 						set_bit(&mut a, tree_index[var], true);
 						v.push(var);
-						// add clauses containing var as positive literal to satisfied clauses
-						let c = c.union(&positive[var]).cloned().collect();
 
-						((a, s, v), c)
-					}).collect_vec();
-					
-
-					// set bit for var to 0. since 0 is the default state, we don't need to do this explicitely
-					let mut configs = configs.into_iter().map(|(config, clauses)| {
-						// add clauses containing var as negative literal to satisfied clauses
-						let clauses = clauses.union(&negative[var]).cloned().collect();
-						(config, clauses)
+						(a, s, v)
 					}).collect_vec();
 					
 					configs.extend(clones);
@@ -87,69 +62,61 @@ impl Solve for Primal {
 				}
 				&Forget(var) => {
 					let mut configs = config_stack.pop().unwrap();
+
+					let forget_clauses = occurences[var].iter().filter(|&&c| !forgotten[c]).collect_vec();
+
 					// check all clauses that contain var if they are satisfied
-					configs = configs.into_iter().filter_map(|((mut a, mut s, v), mut c)| {
-						for var_clause in negative[var].iter().chain(positive[var].iter()) {
-							if c.contains(&var_clause) {
+					configs = configs.into_iter().filter_map(|(mut a, mut s, v)| {
+						for clause in forget_clauses.iter() {
+							// check if any variable has the desired value
+							let satisfied = formula.clause(clause).iter().any(|&literal| {
+								let variable  = literal.abs() as usize - 1;
+								if literal > 0 {
+									get_bit(&a, tree_index[variable])
+								} else {
+									!get_bit(&a, tree_index[variable])
+								}
+							});
+							if satisfied {
 								// clause satisfied: award points
-								s += if formula.is_hard(var_clause) { 0 } else { formula.weight(var_clause) };
-							} else if formula.is_hard(var_clause) {
+								s += if formula.is_hard(clause) { 0 } else { formula.weight(clause) };
+							} else if formula.is_hard(clause) {
 								// hard clause not satisfied: reject config
 								return None;
 							}
 						}
+
+						// reset bit of variable
 						set_bit(&mut a, tree_index[var], false);
-						
-						// retain only hard clauses and those that have nothing to do with var
-						c.retain(|c| formula.is_hard(c) || !(positive[var].contains(c) || negative[var].contains(c)));
-						Some(((a, s, v), c))
+
+						Some((a, s, v))
 					}).collect_vec();
 
-					// deduplicate
-					let max_fingerprint = configs.iter().map(|((a, _, _), _)| a).max().unwrap();
-					let mut indexes = vec![0; max_fingerprint + 1];
-					for (i, ((a, s, _), _)) in configs.iter().enumerate() {
-						if indexes[*a] == 0 {
-							indexes[*a] = i + 1;
-						} else {
-							let index = indexes[*a] - 1;
-							let other_score = configs[index].0.1;
-							if *s > other_score {
-								indexes[*a] = i+1;
-							}
-						}
-					}
+					// mark all clauses containing var as forgotten
+					forget_clauses.into_iter().for_each(|&c| forgotten[c] = true);
 
-					for i in (0..configs.len()).rev() {
-						let ((fingerprint, _, _), _) = configs[i];
-						if indexes[fingerprint] != i+1 {
-							configs.swap_remove(i);
-						}
-					}
+					deduplicate(&mut configs);
 
 					config_stack.push(configs);
 				}
-				&Edge(var1, var2) => {
-					// nothing
-				}
+				&Edge(_, _) => { /* nothing */ }
 				&Join => {
 					let left = config_stack.pop().unwrap();
 					let right = config_stack.pop().unwrap();
 
-					let max_fingerprint = left.iter().map(|((a, _, _), _)| a).max().unwrap();
+					let max_fingerprint = left.iter().map(|(a, _, _)| a).max().unwrap();
 					let mut indexes = vec![0; max_fingerprint+1];
 
-					for (i, ((a, _, _), _)) in left.iter().enumerate() {
+					for (i, (a, _, _)) in left.iter().enumerate() {
 						indexes[*a] = i + 1;
 					}
 
 					// keep only intersection of left and right
-					let intersection = right.iter().filter_map(|((a, s, v), c)| {
+					let intersection = right.iter().filter_map(|(a, s, v)| {
 						if indexes[*a] > 0 {
-							let ((_, other_s, other_v), other_c) = &left[indexes[*a] - 1];
+							let (_, other_s, other_v) = &left[indexes[*a] - 1];
 							let combined_vars    = v.iter().chain(other_v.iter()).unique().copied().collect();
-							let combined_clauses = c.iter().chain(other_c.iter()).copied().collect();
-							Some(((*a, s + other_s, combined_vars), combined_clauses))
+							Some((*a, s + other_s, combined_vars))
 						} else {
 							None
 						}
@@ -161,7 +128,7 @@ impl Solve for Primal {
 		}
 
 		let last = config_stack.pop().unwrap();
-		let (_, score, variables) = &last[0].0;
+		let (_, score, variables) = &last[0];
 		let mut assignment = vec![false; formula.n_vars];
 		for v in variables {
 			assignment[*v] = true;

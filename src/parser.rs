@@ -279,6 +279,19 @@ impl Formula {
 
 		(formulas, renamings)
 	}
+	
+	pub fn variable_occurences(&self) -> Vec<Vec<usize>> {
+		let mut occurences = vec![vec![]; self.n_vars];
+		
+		for (i, clause) in self.clauses.iter().enumerate() {
+			for &literal in clause {
+				let var = literal.abs() as usize - 1;
+				occurences[var].push(i);
+			}
+		}
+
+		occurences
+	}
 
 	pub fn get_clauses(&self) -> &Vec<Clause> {
 		&self.clauses
@@ -294,6 +307,10 @@ impl Formula {
 
 	pub fn weight(&self, clause: &usize) -> usize {
 		self.weights[*clause]
+	}
+
+	pub fn clause(&self, clause: &usize) -> &Clause {
+		&self.clauses[*clause]
 	}
 
 	pub fn max_score(&self) -> usize {
