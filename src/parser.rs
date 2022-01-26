@@ -309,6 +309,10 @@ impl Formula {
 		self.weights[*clause]
 	}
 
+	pub fn soft_weight(&self, clause: &usize) -> usize {
+		if self.is_hard(clause) { 0 } else { self.weights[*clause] }
+	}
+
 	pub fn clause(&self, clause: &usize) -> &Clause {
 		&self.clauses[*clause]
 	}

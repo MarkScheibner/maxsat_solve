@@ -79,7 +79,7 @@ impl Solve for Primal {
 							});
 							if satisfied {
 								// clause satisfied: award points
-								s += if formula.is_hard(clause) { 0 } else { formula.weight(clause) };
+								s += formula.soft_weight(clause);
 							} else if formula.is_hard(clause) {
 								// hard clause not satisfied: reject config
 								return None;
