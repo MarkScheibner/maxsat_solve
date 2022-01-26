@@ -39,7 +39,8 @@ fn main() -> anyhow::Result<()>{
 	let copy = formula.clone();
 	let max_score                 = formula.max_score();
 	let size_before               = formula.n_clauses;
-	let (assignment, renaming)    = formula.preprocess().unwrap();
+	let (assignment, renaming, s) = formula.preprocess().unwrap();
+	let preprocessed_copy = formula.clone();
 	let _size_reduction           = size_before - formula.n_clauses;
 	let (sub_formulas, renamings) = formula.split();
 	
@@ -60,10 +61,11 @@ fn main() -> anyhow::Result<()>{
 		Some((solutions, score)) => {
 			let merged = merge_solutions(solutions, renamings);
 			let assignment = unpack_solution(assignment, merged, renaming);
+			println!("c max: {}, pre: {}, solver: {}", max_score, s, score);
 			println!("c Testing assignment gives: {:?}", copy.test_assignment(&assignment));
 			
 			println!("s OPTIMUM FOUND");
-			println!("o {}", max_score - score);
+			println!("o {}", max_score - (score + s));
 			println!("v {}", format_assignment(assignment));
 		},
 		None => {

@@ -56,7 +56,7 @@ fn compute_renaming(clauses: &mut [Clause]) -> Renaming {
 impl Formula {
 	/// Applies some preprocessing to the formula. After the preprocessing is done, the formula will contain no
 	/// pure variables and no unit clauses and no empty clauses.
-	pub fn preprocess(&mut self) -> Option<(PartialAssignment, Renaming)> {
+	pub fn preprocess(&mut self) -> Option<(PartialAssignment, Renaming, usize)> {
 		// n = number of vars, m = number of clauses, l = length of formula,
 		// d_v = number of clauses that contain variable v
 		use crate::parser::WorkElement::*;
@@ -64,6 +64,7 @@ impl Formula {
 		let mut clause_lengths = self.clauses.iter().map(|c| c.len()).collect::<Vec<_>>();  // O(m)
 		let mut occurence_list = self.build_occurence_list();                               // O(l)
 		let mut work_stack     = self.initial_stack(&mut occurence_list, &mut assignment)?; // O(n + m)
+		let mut pre_score      = 0;
 
 		while let Some(work) = work_stack.pop() {
 			match work {
@@ -77,6 +78,7 @@ impl Formula {
 						if clause[var_index] == literal {
 							// the clause contains the literal, so it is satisfied by the unit literal
 							self.clear_clause(clause_index, &occurence_list, &mut assignment, &mut work_stack);
+							pre_score += self.soft_weight(&clause_index);
 						} else {
 							// the clause contains the negated literal, remove only that
 							clause[var_index] = 0;
@@ -108,31 +110,37 @@ impl Formula {
 							if assignment[unit_var].is_none() {
 								work_stack.push(Unit(unit_literal));
 								assignment[unit_var] = Some(unit_literal > 0);
+								// clear any (hard) unit clause that consists of the same literal so that we dont need
+								// to extract their unit literal as well. this step is optional, but possibly an
+								// optimization.
+								for &(clause_index, var_index) in &occurence_list[unit_var].2 {
+									if clause_lengths[clause_index] != 1 { continue; } // we only care for unit clauses
+									// TODO this somehow causes crashes sometimes
+									let contained_literal = self.clauses[clause_index][var_index];
+									if contained_literal == literal {
+										// unit clause contains the same literal, so we can also clear the clause
+										self.clauses[clause_index].clear();
+										pre_score += self.soft_weight(&clause_index);
+									} else if self.weights[clause_index] == self.top && contained_literal == -literal {
+										// we have unit clauses that disagree on the unit variable
+										return None;
+									}
+								} // we would do this anyway when Unit(unit_literal) is popped from the stack, so this
+								  // incurs no additional cost
 							}
-							// we must clear any (hard) unit clause that consists of the same literal so that the above
-							// claim actually holds. otherwise we cant move the cost to where the literal is set to 0
-							for &(clause, var_index) in &occurence_list[unit_var].2 {
-								let contained_literal = self.clauses[clause][var_index];
-								if clause_lengths[clause] == 1 && contained_literal == literal {
-									// unit clause contains the same literal, so we can also clear the clause
-									self.clauses[clause].clear();
-								} else if self.weights[clause] == self.top && contained_literal == -literal {
-									// we have unit clauses that disagree on the unit variable
-									return None;
-								}
-							} // this is essentially free, since we would do this anyways inside the first loop
 						}
 					} // O(d_var)
 				},
 				Pure(var) => {
 					// empty all clauses containing var, since setting var to val makes them evaluate to true
 					for &(clause_index, _) in &occurence_list[var].2 {
+						// multiple pure variables can reference the same clause. skip already handled ones.
+						if self.clauses[clause_index].is_empty() { continue; }
 						self.clear_clause(clause_index, &occurence_list, &mut assignment, &mut work_stack);
+						pre_score += self.soft_weight(&clause_index);
 					} // O(d_var)
 				}
 			} 
-		} // O(sum(d_v)) = O(l) 
-			} // O(sum(d_v)) = O(l) 
 		} // O(sum(d_v)) = O(l) 
 
 		// remove all erased literals
@@ -151,7 +159,7 @@ impl Formula {
 		self.n_clauses = self.clauses.len();
 
 		// done after O(l)
-		Some((assignment, renaming))
+		Some((assignment, renaming, pre_score))
 	}
 	fn build_occurence_list(&self) -> OccurenceList {
 		let mut occ_list = vec![(Cell::new(0), Cell::new(0), Vec::default()); self.n_vars];
