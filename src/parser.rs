@@ -75,7 +75,7 @@ impl Formula {
 						if clause.is_empty() { continue; }
 
 						if clause[var_index] == literal {
-							// the clause contains the literal, so the clause can safely be removed
+							// the clause contains the literal, so it is satisfied by the unit literal
 							self.clear_clause(clause_index, &occurence_list, &mut assignment, &mut work_stack);
 						} else {
 							// the clause contains the negated literal, remove only that
@@ -100,10 +100,11 @@ impl Formula {
 
 						if clause_lengths[clause_index] == 1 && self.weights[clause_index] == self.top {
 							// this is a hard unit clause. find the remaining literal and add it to the work stack. If
-							// we already "pay" for stepping through the clause at the moment we set a literal to 0 we
-							// can do this in O(1)
+							// we already "pay" for stepping over a zeroed literal at the moment we set it to 0 we can
+							// do this in amortized O(1)
 							let unit_literal = *clause.iter().find(|&&l| l != 0).unwrap();
 							let unit_var = unit_literal.abs() as usize -1;
+							// if there is already an assignment for the variable, then it has already become pure
 							if assignment[unit_var].is_none() {
 								work_stack.push(Unit(unit_literal));
 								assignment[unit_var] = Some(unit_literal > 0);
@@ -129,8 +130,10 @@ impl Formula {
 						self.clear_clause(clause_index, &occurence_list, &mut assignment, &mut work_stack);
 					} // O(d_var)
 				}
+			} 
+		} // O(sum(d_v)) = O(l) 
 			} // O(sum(d_v)) = O(l) 
-		}
+		} // O(sum(d_v)) = O(l) 
 
 		// remove all erased literals
 		for clause in &mut self.clauses {
@@ -190,7 +193,7 @@ impl Formula {
 		for i in 0..self.n_clauses {
 			let clause = &self.clauses[i];
 			let weight = self.weights[i];
-			// only consider hard clauses for unit clauses, since they are guaranteed(-ish) to not conflict
+			// only consider hard clauses for unit clauses, since leaving soft unit clauses unsatisfied is valid
 			if clause.len() == 1 && weight == self.top {
 				let only_literal = clause[0];
 				let only_var = only_literal.abs() as usize - 1;
