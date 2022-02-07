@@ -1,10 +1,13 @@
 use std::collections::VecDeque;
 
 use itertools::Itertools;
+use metrohash::MetroHashSet;
 
 
 use crate::graph::*;
 use crate::fasttw::Decomposition;
+
+type Set<T> = MetroHashSet<T>;
 
 type Assignment = Vec<bool>;
 type NiceDecomposition = Vec<(usize, Node)>;
@@ -139,7 +142,100 @@ impl Solve for Primal {
 
 
 impl Solve for Dual {
-	fn solve(self, _td: Decomposition, k: usize, formula: Formula) -> Option<(Assignment, usize)> {
+	fn solve(self, td: Decomposition, k: usize, formula: Formula) -> Option<(Assignment, usize)> {
+		let nice_td = make_nice(&self, td, true);
+		
+		let tree_index       = tree_index(&nice_td, k, self.size());
+		let traversal        = postorder(&nice_td);
+		let mut config_stack = Vec::<Vec<Configuration>>::new();
+		
+		let occurences = formula.variable_occurences();
+		let mut free   = vec![true; formula.n_vars];
+
+		for i in traversal.into_iter() {
+			let (_, node) = &nice_td[i];
+			match node {
+				Leaf => {
+					config_stack.push(vec![(0, 0, vec![])]);
+				},
+				Forget(clause) => {
+					let configs = config_stack.pop().unwrap();
+
+					// list vars of clause that are still free
+					let clause_content = formula.clause(clause);
+					let mut vars       = clause_content.iter().map(|l| l.abs() as usize - 1).collect_vec();
+					vars.retain(|v| free[*v]);
+					// list clauses that share a free variable. this should include exactly the clauses in the bag that
+					// are connected to clause in the dual graph
+					let clauses        = vars.iter().flat_map(|v| &occurences[*v]).unique().collect_vec();
+
+					// split configurations into those where clause is already satisfied and those where its not
+					let (sat, unsat): (Vec<_>, Vec<_>) = configs.into_iter()
+					                                            .partition(|(a, _, _)| get_bit(a, tree_index[*clause]));
+
+					// list those variables, which have to be set to 1 in order to not satisfy clause
+					let nonsat_vars: Set<_> = clause_content.iter().filter(|l| **l < 0)
+					                                               .map(|l| l.abs() as usize - 1)
+					                                               .collect();
+					// list clauses that become satisfied when clause is not satisfied
+					let nonsat_clauses               = clauses.iter().filter(|c| {
+						formula.clause(c).iter().any(|&l| {
+							let var = l.abs() as usize - 1;
+							// we only care for variables that are in clause
+							if !vars.contains(&var) { return false; }
+							// evaluate literal
+							if l > 0 { nonsat_vars.contains(&var) } else { !nonsat_vars.contains(&var) }
+						})
+					});
+					// make bitmask for setting bits of now satsfied clauses
+					let mut nonsat_bitmask = 0;
+					for &&c in nonsat_clauses {
+						set_bit(&mut nonsat_bitmask, tree_index[c], true);
+					}
+					// build configs where clause is not satisfied
+					let unsat_configs = unsat.into_iter().map(|(a, s, mut v)| {
+						let new_assignment = a | nonsat_bitmask;
+						v.extend(nonsat_vars.clone());
+						(new_assignment, s, v)
+					});
+					let sat_configs   = sat; // TODO configs where clause becomes satisfied
+
+					// merge configs
+					let mut configs = unsat_configs.into_iter().chain(sat_configs.into_iter()).collect_vec();
+
+					// forget clause
+					// remove any config where clause is not satisfied if it's a hard clause
+					if formula.is_hard(clause) {
+						configs.retain(|(a, _, _)| get_bit(a, tree_index[*clause]));
+					}
+					// unset bit
+					for (a, _, _) in configs.iter_mut() {
+						set_bit(a, tree_index[*clause], false);
+					}
+					// TODO deduplicate
+
+					// lock all variables of clause
+					for v in vars {
+						free[v] = false;
+					}
+
+					config_stack.push(configs);
+				},
+				Join => {
+					let left = config_stack.pop().unwrap();
+					let right = config_stack.pop().unwrap();
+					let fingerprint_table = [0; 1];
+					// build all combinations from left and right
+					// bitwise or their clause bits
+					// union their variables
+					// add their scores
+					// keep highest score per fingerprint
+				},
+				// Introduce and Edge do nothing
+				_ => {}
+			}
+		}
+
 		Some((vec![true; self.size()], 0))
 	}
 }
