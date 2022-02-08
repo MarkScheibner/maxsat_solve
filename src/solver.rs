@@ -1,13 +1,15 @@
 use std::collections::VecDeque;
+use std::ops::Rem;
 
 use itertools::Itertools;
-use metrohash::MetroHashSet;
+use metrohash::{MetroHashSet, MetroHashMap};
 
 
 use crate::graph::*;
 use crate::fasttw::Decomposition;
 
-type Set<T> = MetroHashSet<T>;
+type Set<T>    = MetroHashSet<T>;
+type Map<K, V> = MetroHashMap<K, V>;
 
 type Assignment = Vec<bool>;
 type NiceDecomposition = Vec<(usize, Node)>;
@@ -159,32 +161,36 @@ impl Solve for Dual {
 					config_stack.push(vec![(0, 0, vec![])]);
 				},
 				Forget(clause) => {
-					let configs = config_stack.pop().unwrap();
+					let configs    = config_stack.pop().unwrap();
+					let clause_bit = tree_index[*clause]; 
 
 					// list vars of clause that are still free
-					let clause_content = formula.clause(clause);
-					let mut vars       = clause_content.iter().map(|l| l.abs() as usize - 1).collect_vec();
+					let literals = formula.clause(clause);
+					let mut vars = literals.iter().map(|l| l.abs() as usize - 1).collect_vec();
 					vars.retain(|v| free[*v]);
-					// list clauses that share a free variable. this should include exactly the clauses in the bag that
-					// are connected to clause in the dual graph
-					let clauses        = vars.iter().flat_map(|v| &occurences[*v]).unique().collect_vec();
+					// list clauses that share a free variable with clause
+					let clauses  = vars.iter().flat_map(|v| &occurences[*v]).unique().collect_vec();
 
 					// split configurations into those where clause is already satisfied and those where its not
 					let (sat, unsat): (Vec<_>, Vec<_>) = configs.into_iter()
-					                                            .partition(|(a, _, _)| get_bit(a, tree_index[*clause]));
+					                                            .partition(|(a, _, _)| get_bit(a, clause_bit));
 
 					// list those variables, which have to be set to 1 in order to not satisfy clause
-					let nonsat_vars: Set<_> = clause_content.iter().filter(|l| **l < 0)
-					                                               .map(|l| l.abs() as usize - 1)
-					                                               .collect();
+					let nonsat_assignment: Set<_> = literals.iter().filter(|l| **l < 0)
+					                                              .map(|l| l.abs() as usize - 1)
+					                                              .collect();
 					// list clauses that become satisfied when clause is not satisfied
-					let nonsat_clauses               = clauses.iter().filter(|c| {
+					let nonsat_clauses = clauses.iter().filter(|c| {
 						formula.clause(c).iter().any(|&l| {
 							let var = l.abs() as usize - 1;
 							// we only care for variables that are in clause
 							if !vars.contains(&var) { return false; }
 							// evaluate literal
-							if l > 0 { nonsat_vars.contains(&var) } else { !nonsat_vars.contains(&var) }
+							if l > 0 {
+								nonsat_assignment.contains(&var)
+							} else {
+								!nonsat_assignment.contains(&var)
+							}
 						})
 					});
 					// make bitmask for setting bits of now satsfied clauses
@@ -193,26 +199,86 @@ impl Solve for Dual {
 						set_bit(&mut nonsat_bitmask, tree_index[c], true);
 					}
 					// build configs where clause is not satisfied
-					let unsat_configs = unsat.into_iter().map(|(a, s, mut v)| {
+					let nonsat_configs = unsat.into_iter().map(|(a, s, mut v)| {
 						let new_assignment = a | nonsat_bitmask;
-						v.extend(nonsat_vars.clone());
+						v.extend(nonsat_assignment.clone());
 						(new_assignment, s, v)
 					});
-					let sat_configs   = sat; // TODO configs where clause becomes satisfied
+					let sat_configs   = {
+						// configs, where clause is already satisfied and will not be satisfied by any of vars
+						let already_sat = sat.into_iter().map(|(a, s, mut v)| {
+							let new_assignment = a | nonsat_bitmask;
+							v.extend(nonsat_assignment.clone());
+							(new_assignment, s, v)
+						});
+						// configs, where clause becomes satisfied (even if it already is) by one of vars
+						let newly_sat = {
+							// map vars into 0..|vars|
+							let var_index: Map<_, _> = vars.iter().enumerate().map(|(i, v)| (*v, i)).collect();
+							// build occurence list for vars. (negative clauses, positive clauses)
+							let mut occurence_list   = vec![(Set::<usize>::default(), Set::<usize>::default()); vars.len()];
+							for &&c in clauses.iter() {
+								for &l in formula.clause(&c) {
+									let var   = l.abs() as usize - 1;
+									let index = var_index[&var];
+									if l < 0 {
+										occurence_list[index].0.insert(c);
+									} else {
+										occurence_list[index].1.insert(c);
+									}
+								}
+							}
+
+							for v in vars.iter() {
+								let mut bitmask = 1 << clause_bit;
+								// list clauses that agree with clause on v
+								let satisfied_clauses = if nonsat_assignment.contains(&v) {
+									// since not satisfying clause requires v to be 1, we set it to 0 to satisfy clause
+									&occurence_list[var_index[v]].0
+								} else {
+									&occurence_list[var_index[v]].1
+								};
+								for c in satisfied_clauses.clone() {
+									set_bit(&mut bitmask, tree_index[c], true);
+									for l in formula.clause(&c) {
+										// TODO use a var set
+										let var = l.abs() as usize - 1;
+										if !vars.contains(&var) { continue; }
+										// remove clause from occurence list, as it is satisfied
+										occurence_list[var_index[&var]].0.remove(&var);
+										occurence_list[var_index[&var]].1.remove(&var);
+									}
+								}
+
+								// TODO eliminate pure variables
+								// TODO start going down tree
+
+
+
+							}
+
+							vec![]
+						};
+
+						// TODO configs where clause becomes satisfied
+						already_sat.into_iter().chain(newly_sat.into_iter()).collect_vec()
+					};
 
 					// merge configs
-					let mut configs = unsat_configs.into_iter().chain(sat_configs.into_iter()).collect_vec();
+					let mut configs = nonsat_configs.into_iter().chain(sat_configs.into_iter()).collect_vec();
 
 					// forget clause
 					// remove any config where clause is not satisfied if it's a hard clause
 					if formula.is_hard(clause) {
-						configs.retain(|(a, _, _)| get_bit(a, tree_index[*clause]));
+						configs.retain(|(a, _, _)| get_bit(a, clause_bit));
 					}
 					// unset bit
 					for (a, _, _) in configs.iter_mut() {
-						set_bit(a, tree_index[*clause], false);
+						set_bit(a, clause_bit, false);
 					}
-					// TODO deduplicate
+					
+					// remove duplicate configs
+					deduplicate(&mut configs);
 
 					// lock all variables of clause
 					for v in vars {
@@ -222,14 +288,20 @@ impl Solve for Dual {
 					config_stack.push(configs);
 				},
 				Join => {
-					let left = config_stack.pop().unwrap();
-					let right = config_stack.pop().unwrap();
-					let fingerprint_table = [0; 1];
-					// build all combinations from left and right
-					// bitwise or their clause bits
-					// union their variables
-					// add their scores
-					// keep highest score per fingerprint
+					let left        = config_stack.pop().unwrap();
+					let right       = config_stack.pop().unwrap();
+					let combined    = left.into_iter().cartesian_product(right.into_iter());
+					let mut configs = combined.map(|((a1, s1, v1), (a2, s2, v2))| {
+						let combined_assignment = a1 | a2;
+						let combined_score      = s1 + s2;
+						// TODO we can save ourselves some work here if we do the deduplication here
+						let combined_vars       = v1.into_iter().chain(v2.into_iter()).unique().collect_vec();
+						(combined_assignment, combined_score, combined_vars)
+					}).collect_vec();
+
+					deduplicate(&mut configs);
+
+					config_stack.push(configs);
 				},
 				// Introduce and Edge do nothing
 				_ => {}
@@ -270,7 +342,7 @@ impl Solve for Incidence {
 				},
 				&Forget(clause) if self.is_clause(clause) => {
 					let (mut config, mut clause_mask) = config_stack.pop().unwrap();
-					reject_unfulfilled(&mut config, clause, &tree_index, &self);
+					reject_unsatisfied(&mut config, clause, &tree_index, &self);
 
 					// unmark clause-bit
 					set_bit(&mut clause_mask, tree_index[clause], false);
@@ -346,7 +418,7 @@ fn duplicate_assignments(config: &mut Vec<Configuration>, var: usize, tree_index
 	// append copies to config
 	config.extend(copies);
 }
-fn reject_unfulfilled(config: &mut Vec<Configuration>, clause: usize, tree_index: &Vec<usize>, graph: &Incidence) {
+fn reject_unsatisfied(config: &mut Vec<Configuration>, clause: usize, tree_index: &Vec<usize>, graph: &Incidence) {
 	let mut rejected = vec![];
 
 	for (i, (a, s, _)) in config.iter_mut().enumerate() {
