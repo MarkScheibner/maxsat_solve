@@ -297,10 +297,12 @@ impl Solve for Dual {
 									}
 								}
 
-								let weight = formula.weight(clause);
-								for (c, v) in leafs.into_iter() {
+								let weight = if formula.is_hard(clause) { 0 } else { formula.weight(clause) };
+								for (c, v_bits) in leafs.into_iter() {
 									for (a, s, v) in sat.iter().chain(unsat.iter()) {
-										sat_configs.push((a | c, s + weight, v.clone())); // TODO append variables
+										let mut combined_vars = v.clone();
+										combined_vars.extend(extract_vars(v_bits, &vars, &var_index));
+										sat_configs.push((a | c, s + weight, v.clone()));
 									}
 								}
 
@@ -629,6 +631,9 @@ fn delete_clause_from_occ(occ: &mut OccurenceList, c: &usize, vars: &Set<usize>,
 	}
 
 	new_pure
+}
+fn extract_vars(var_bits: usize, vars: &Set<usize>, var_index: &Vec<usize>) -> Vec<usize> {
+	vars.iter().filter(|v| get_bit(&var_bits, var_index[**v])).map(|v| *v).collect_vec()
 }
 
 fn make_nice(graph: &impl Graph, td: Decomposition, very_nice: bool) -> NiceDecomposition {
