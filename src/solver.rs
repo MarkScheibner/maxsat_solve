@@ -248,9 +248,9 @@ impl Solve for Dual {
 									set_bit(&mut clause_assignment, tree_index[c], true);
 									// mark v with its values
 									set_bit(&mut var_assignment, var_index[*v], v_value);
-									// remove clause from occ_list
-									occ_list[v_index].0.remove(&c);
-									occ_list[v_index].1.remove(&c);
+									// remove clause from occ_list and empty entries for var
+									occ_list[v_index] = (Set::default(), Set::default());
+									delete_clause_from_occ(&mut occ_list, &c, &vars, &var_index);
 								}
 
 								let mut tree_stack = vec![(clause_assignment, var_assignment, occ_list.clone())];
@@ -358,7 +358,13 @@ impl Solve for Dual {
 			}
 		}
 
-		Some((vec![true; self.size()], 0))
+		let last = config_stack.pop().unwrap();
+		let (_, score, variables) = &last[0];
+		let mut assignment = vec![false; formula.n_vars];
+		for v in variables {
+			assignment[*v] = true;
+		}
+		Some((assignment, *score))
 	}
 }
 
@@ -549,7 +555,7 @@ fn var_index(nice_td: &Vec<(usize, Node)>, formula: &Formula) -> Vec<usize>{
 		if let Forget(clause) = node {
 			let literals = formula.clause(&clause);
 			let vars     = literals.iter().map(|l| l.abs() as usize - 1).filter(|v| free[*v]).collect_vec();
-			for (v, i) in vars.into_iter().enumerate() {
+			for (i, v) in vars.into_iter().enumerate() {
 				free[v] = false;
 				var_index[v] = i;
 			}
