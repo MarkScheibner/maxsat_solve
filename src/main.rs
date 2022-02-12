@@ -10,6 +10,7 @@ mod parser;
 mod graph;
 mod fasttw;
 mod solver;
+mod solvers;
 
 use crate::parser::Formula;
 use crate::graph::Graph;
@@ -40,7 +41,6 @@ fn main() -> anyhow::Result<()>{
 	let max_score                 = formula.max_score();
 	let size_before               = formula.n_clauses;
 	let (assignment, renaming, s) = formula.preprocess().unwrap();
-	let preprocessed_copy = formula.clone();
 	let _size_reduction           = size_before - formula.n_clauses;
 	let (sub_formulas, renamings) = formula.split();
 	
@@ -136,27 +136,4 @@ fn format_assignment(assignment: Assignment) -> String {
 		let variable_name = i as isize +1;
 		if v { variable_name } else {-variable_name }
 	}).join(", ")
-}
-
-fn print_values(graphs: &Vec<impl graph::Graph>, size_reduction: usize) {
-	// some useful values
-	let nodes       = graphs.iter().map(|g| g.size()).collect::<Vec<_>>();
-	let edges       = graphs.iter().map(|g| g.edge_count()).collect::<Vec<_>>();
-	let num_nodes   = nodes.iter().sum::<usize>();
-	let num_edges   = edges.iter().sum::<usize>();
-	let components  = graphs.len();
-	let degrees     = graphs.iter().map(|g| {
-		let max_deg = (0..g.size()).map(|i| g.degree(i)).fold(0,          |c_max, d| d.max(c_max));
-		let min_deg = (0..g.size()).map(|i| g.degree(i)).fold(usize::MAX, |c_min, d| d.min(c_min));
-		(min_deg, max_deg)
-	}).collect::<Vec<_>>();
-	let g_max_deg   = degrees.iter().fold(0,          |c_max, &(_, max)| c_max.max(max));
-	let g_min_deg   = degrees.iter().fold(usize::MAX, |c_min, &(min, _)| c_min.min(min));
-	let max_min_deg = degrees.iter().map(|&(min, _)| min).max().unwrap_or(0);
-
-	if degrees.iter().any(|&(min, _)| min > 100) || nodes.iter().zip(&edges).any(|(v, e)| v * 100 < *e) {
-		// don't even bother
-		println!("{}, {}, {}, {}, {}, {}, {}, {}", num_nodes, num_edges, components, g_max_deg, g_min_deg, max_min_deg, size_reduction, -1);
-		std::process::exit(1);
-	}
 }
