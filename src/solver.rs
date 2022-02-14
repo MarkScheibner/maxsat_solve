@@ -174,7 +174,7 @@ pub fn reverse<T>(tree: &Vec<(usize, T)>) -> (usize, Vec<Vec<usize>>) {
 	(root, children)
 }
 
-pub fn traverse_order<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
+fn post_order<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
 	let (root, children)   = reverse(&tree);
 	let mut traverse_stack = vec![root];
 	let mut traversal      = Vec::with_capacity(tree.len());
@@ -190,6 +190,41 @@ pub fn traverse_order<T>(tree: &Vec<(usize, T)>) -> Vec<usize> {
 	// postorder is reversed preorder (with the exception of going right to left now)
 	traversal.reverse();
 	traversal
+}
+
+pub fn traverse_order(tree: &Vec<(usize, Node)>) -> Vec<usize> {
+	let mut optimized_subtrees = vec![];
+
+	for i in post_order(tree) {
+		let (_, node) = tree[i];
+		match node {
+			Leaf => {
+				optimized_subtrees.push((1, vec![i]))
+			},
+			Forget(_) | Introduce(_) | Edge(_, _) => {
+				let (stack_cost, mut traversal) = optimized_subtrees.pop().unwrap();
+				traversal.push(i);
+				optimized_subtrees.push((stack_cost, traversal));
+			},
+			Join => {
+				let (left_cost, left_traversal)   = optimized_subtrees.pop().unwrap();
+				let (right_cost, right_traversal) = optimized_subtrees.pop().unwrap();
+				if left_cost < right_cost {
+					// go right first to reduce its cost to 1
+					let mut traversal: Vec<_> = right_traversal.into_iter().chain(left_traversal.into_iter()).collect();
+					traversal.push(i);
+					optimized_subtrees.push((1 + left_cost, traversal));
+				} else {
+					// go left first to reduce its cost to 1
+					let mut traversal: Vec<_> = left_traversal.into_iter().chain(right_traversal.into_iter()).collect();
+					traversal.push(i);
+					optimized_subtrees.push((1 + right_cost, traversal));
+				}
+			}
+		}
+	}
+
+	optimized_subtrees.pop().unwrap().1
 }
 
 pub fn tree_index(tree: &NiceDecomposition, k: usize, size: usize) -> Vec<usize> {
