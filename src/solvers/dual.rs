@@ -55,10 +55,20 @@ impl Solve for Dual {
 					// compress table into vec
 					let mut configs = compress_table(config_table);
 
+					let max_score = *configs.iter().map(|(_, s, _)| s).max().unwrap();
+					for (c, s, v) in configs.clone() {
+						// if all k bits are set
+						if c == (1 << k) - 1  && s == max_score {
+							// if we could satisfy all clauses we have no reason to do anything else
+							println!("Reduced config list from {} to 1 at forget", configs.len());
+							configs = vec![(c, s, v)];
+							break;
+						}
+					}
+
 					for (a, _, _) in configs.iter_mut() {
 						set_bit(a, tree_index[*clause], false);
 					}
-					println!("{:?}", configs);
 
 					config_stack.push(configs);
 				},
@@ -75,6 +85,19 @@ impl Solve for Dual {
 					}).collect_vec();
 
 					deduplicate(&mut configs);
+
+					
+					let max_score = *configs.iter().map(|(_, s, _)| s).max().unwrap();
+
+					for (c, s, v) in configs.clone() {
+						// if all k bits are set and we have the best score we have no reason to do anything else
+						if c == ((1 << k) - 1) && s == max_score {
+							println!("Reduced config list from {} to 1 at join", configs.len());
+							configs = vec![(c, s, v)];
+							break;
+						}
+					}
+
 
 					config_stack.push(configs);
 				},
@@ -300,9 +323,9 @@ fn make_sat_configs(table: &mut ConfigTable, v_bag: &VirtualBag, sat: Vec<Config
 		}
 
 		
-		for (c, v_bits) in leafs {
-			for (a, s, v) in sat.iter().chain(unsat.iter()) {
-				let mut new_assignment = a | c;
+		for (c_bits, v_bits) in leafs {
+			for (c, s, v) in sat.iter().chain(unsat.iter()) {
+				let mut new_assignment = c | c_bits;
 				set_bit(&mut new_assignment, tree_index[*clause], false);
 				let other          = &table[new_assignment];
 				// only override the entry if it is either empty or has a lower score
