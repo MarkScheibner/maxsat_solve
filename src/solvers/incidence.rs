@@ -79,7 +79,7 @@ impl Solve for Incidence {
 			}
 
 			if config_stack.last().map_or(true, |(config, _)| config.is_empty()) {
-				println!("No solution found after {}/{} steps", step, traversal_len);
+				println!("c No solution found after {}/{} steps", step, traversal_len);
 				return None;
 			}
 		}

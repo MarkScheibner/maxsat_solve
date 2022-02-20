@@ -4,8 +4,6 @@ use itertools::Itertools;
 
 impl Solve for Primal {
 	fn solve(self, td: Decomposition, k: usize, formula: Formula) -> Option<(Assignment, usize)> {
-		//println!("{:?}", &td);
-		
 		// for each variable list the clauses which contain that variable as a positive / negative literal
 		let occurences = formula.variable_occurences();
 		

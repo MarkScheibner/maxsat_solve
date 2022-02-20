@@ -60,7 +60,7 @@ impl Solve for Dual {
 						// if all k bits are set
 						if c == (1 << k) - 1  && s == max_score {
 							// if we could satisfy all clauses we have no reason to do anything else
-							println!("Reduced config list from {} to 1 at forget", configs.len());
+							println!("c Reduced config list from {} to 1 at forget", configs.len());
 							configs = vec![(c, s, v)];
 							break;
 						}
@@ -92,7 +92,7 @@ impl Solve for Dual {
 					for (c, s, v) in configs.clone() {
 						// if all k bits are set and we have the best score we have no reason to do anything else
 						if c == ((1 << k) - 1) && s == max_score {
-							println!("Reduced config list from {} to 1 at join", configs.len());
+							println!("c Reduced config list from {} to 1 at join", configs.len());
 							configs = vec![(c, s, v)];
 							break;
 						}
