@@ -11,8 +11,7 @@ type ConfigTable   = Vec<Option<(usize, Vec<usize>)>>;
 #[derive(Clone, Default)]
 struct VirtualBag {
 	vars:    Set<usize>,
-	clauses: Vec<usize>,
-	clause:  usize
+	clauses: Vec<usize>
 }
 
 impl Solve for Dual {
@@ -33,71 +32,44 @@ impl Solve for Dual {
 				Leaf => {
 					config_stack.push(vec![(0, 0, vec![])]);
 				},
-				Forget(clause) => {
-					let configs    = config_stack.pop().unwrap();
-					let clause_bit = tree_index[*clause];
-					let v_bag       = &v_bags[*clause];
+				&Forget(clause) => {
+					let configs = config_stack.pop().unwrap();
+					let v_bag   = &v_bags[clause];
 
-					// split configurations into those where clause is already satisfied and those where its not
-					let (sat, unsat): (Vec<_>, Vec<_>) = configs.into_iter()
-					                                            .partition(|(a, _, _)| get_bit(a, clause_bit));
-					
-					let mut config_table: ConfigTable = vec![None; 1 << k];
+					let mut config_table = vec![None; 1 << k];
+					make_sufficient_list(&mut config_table, &v_bag, configs, &tree_index, &formula, &var_index);
 
-					let (nonsat_bits, nonsat_vars) = satisfy_conflicting(v_bag, &tree_index, &formula);
-					
-					make_sat_configs(&mut config_table, &v_bag, sat, unsat.clone(), nonsat_bits, nonsat_vars.clone(), &tree_index, &formula, &var_index);
-					if !formula.is_hard(clause) {
-						// build configs where clause is left unsatisfied
-						make_nonsat_configs(&mut config_table, nonsat_bits, nonsat_vars, unsat.clone());
-					}
-					
 					// compress table into vec
 					let mut configs = compress_table(config_table);
+					simplify_configs(&mut configs, k);
 
-					let max_score = *configs.iter().map(|(_, s, _)| s).max().unwrap();
-					for (c, s, v) in configs.clone() {
-						// if all k bits are set
-						if c == (1 << k) - 1  && s == max_score {
-							// if we could satisfy all clauses we have no reason to do anything else
-							println!("c Reduced config list from {} to 1 at forget", configs.len());
-							configs = vec![(c, s, v)];
-							break;
-						}
-					}
-
-					for (a, _, _) in configs.iter_mut() {
-						set_bit(a, tree_index[*clause], false);
-					}
+					reject_unsatisfied(&mut configs, clause, &tree_index, &formula);
 
 					config_stack.push(configs);
 				},
 				Join => {
-					let left        = config_stack.pop().unwrap();
-					let right       = config_stack.pop().unwrap();
-					let combined    = left.into_iter().cartesian_product(right.into_iter());
-					let mut configs = combined.map(|((a1, s1, v1), (a2, s2, v2))| {
-						let combined_assignment = a1 | a2;
-						let combined_score      = s1 + s2;
-						// TODO we can save ourselves some work here if we do the deduplication here
-						let combined_vars       = v1.into_iter().chain(v2.into_iter()).unique().collect_vec();
-						(combined_assignment, combined_score, combined_vars)
-					}).collect_vec();
+					let left             = config_stack.pop().unwrap();
+					let right            = config_stack.pop().unwrap();
+					let mut config_table = vec![None; 1 << k];
+					for (a1, s1, v1) in left {
+						for (a2, s2, v2) in right.iter() {
+							let combined_assignment = a1 | a2;
+							let replace = match config_table[combined_assignment] {
+								Some((other_s, _)) => other_s < s1 + s2,
+								None               => true
+							};
 
-					deduplicate(&mut configs);
-
-					
-					let max_score = *configs.iter().map(|(_, s, _)| s).max().unwrap();
-
-					for (c, s, v) in configs.clone() {
-						// if all k bits are set and we have the best score we have no reason to do anything else
-						if c == ((1 << k) - 1) && s == max_score {
-							println!("c Reduced config list from {} to 1 at join", configs.len());
-							configs = vec![(c, s, v)];
-							break;
+							if replace {
+								let v1 = v1.clone();
+								let v2 = v2.clone();
+								let combined_vars = v1.into_iter().chain(v2.into_iter()).unique().collect_vec();
+								config_table[combined_assignment] = Some((s1 + s2, combined_vars));
+							}
 						}
 					}
 
+					let mut configs = compress_table(config_table);
+					simplify_configs(&mut configs, k);
 
 					config_stack.push(configs);
 				},
@@ -149,8 +121,7 @@ fn virtual_bag_marking(nice_td: &NiceDecomposition, traversal: &Vec<usize>, f: &
 
 			let v_bag = VirtualBag {
 				vars,
-				clauses,
-				clause: *clause
+				clauses
 			};
 			
 			// lock all variables of clause
@@ -182,163 +153,72 @@ fn partitioned_occurence_list(clauses: &Vec<usize>, formula: &Formula, vars: &Se
 	occ_list
 }
 
-fn satisfy_conflicting(v_bag: &VirtualBag, index: &Vec<usize>, f: &Formula) -> (usize, Set<usize>) {
-	// build assignment that does not satisfy clause when restricted to free variables
-	let nonsat_vars: Set<_> = f.clause(&v_bag.clause).iter()
-	                                                 .filter(|l| **l < 0)
-	                                                 .map(|l| l.abs() as usize -1)
-	                                                 .filter(|v| v_bag.vars.contains(v))
-	                                                 .collect();
 
-	// list clauses that become satisfied when clause is not satisfied
-	let conflicting_clauses = v_bag.clauses.iter().filter(|c| {
-		f.clause(c).iter().any(|&l| {
-			let var = l.abs() as usize - 1;
-			// we only care for variables that are in clause
-			if !v_bag.vars.contains(&var) { return false; }
-			// evaluate literal
-			if l > 0 {
-				nonsat_vars.contains(&var)
-			} else {
-				!nonsat_vars.contains(&var)
-			}
-		})
-	});
-	// make bitmask for setting bits of now satsfied clauses
-	let mut nonsat_clauses = 0;
-	for &c in conflicting_clauses {
-		set_bit(&mut &mut nonsat_clauses, index[c], true);
-	}
-
-	(nonsat_clauses, nonsat_vars)
-}
-
-fn make_nonsat_configs(table: &mut ConfigTable, bitmask: usize, vars: Set<usize>, unsat: Vec<Configuration>) {
-	for (a, s, v) in unsat {
-		let new_assignment = a | bitmask;
-		let other          = &table[new_assignment];
-		// only override the entry if it is either empty or has a lower score
-		let overwrite      = other.is_none() || matches!(other, Some((other_s, _)) if *other_s < s);
-		
-		if overwrite {
-			let mut v = v.clone();
-			v.extend(vars.clone());
-			table[new_assignment] = Some((s, v));
-		}
-	}
-}
-
-fn make_sat_configs(table: &mut ConfigTable, v_bag: &VirtualBag, sat: Vec<Configuration>, unsat: Vec<Configuration>,
-                    nonsat_bits: usize, nonsat_vars: Set<usize>, tree_index: &Vec<usize>, f: &Formula,
-                    var_index: &Vec<usize>) {
-	
+fn make_sufficient_list(table: &mut ConfigTable, v_bag: &VirtualBag, configs: Vec<Configuration>, tree_index: &Vec<usize>, f: &Formula, var_index: &Vec<usize>) {
 	let vars    = &v_bag.vars;
 	let clauses = &v_bag.clauses;
-	let clause  = &v_bag.clause;
-	let weight  = if f.is_hard(clause) { 0 } else { f.weight(clause) };
-
-	sat.clone().into_iter().for_each(|(a, s, v)| {
-		let mut new_assignment = a | nonsat_bits;
-		set_bit(&mut new_assignment, tree_index[*clause], false);
-		let other          = &table[new_assignment];
-		// only override the entry if it is either empty or has a lower score
-		let overwrite      = other.is_none() || matches!(other, Some((other_s, _)) if *other_s < s);
-		
-		if overwrite {
-			let mut v = v.clone();
-			v.extend(nonsat_vars.clone());
-			table[new_assignment] = Some((s + weight, v));
-		}
-	});
-
-	// configs, where clause becomes satisfied (even if it already is) by one of vars
 	
-	// build occurence list. for v we have c in the left set if c contains ¬v and in the right
-	// set if c contains v
-	let mut occ_list = partitioned_occurence_list(&clauses, &f, &vars, &var_index);
+	let mut tree_stack = vec![(0, 0, partitioned_occurence_list(&clauses, &f, &vars, &var_index))];
+	let mut leafs      = vec![];
 
-	for v in vars.iter() {
-		let mut clause_assignment = 0;
-		let mut var_assignment    = 0;
-		// do the opposite of the nonsat assignment
-		let v_value = !nonsat_vars.contains(&v);
-		let v_index = var_index[*v];
-		// all clauses that agree with clause on v became satisfied
-		let satisfied_clauses = if !v_value {
-			&occ_list[v_index].0
-		} else {
-			&occ_list[v_index].1
-		};
-		for c in satisfied_clauses.clone() {
-			// mark satisfied clauses
-			set_bit(&mut clause_assignment, tree_index[c], true);
-			// mark v with its values
-			set_bit(&mut var_assignment, var_index[*v], v_value);
-			// remove clause from occ_list and empty entries for var
-			occ_list[v_index] = (Set::default(), Set::default());
-			delete_clause_from_occ(&mut occ_list, &c, &vars, &var_index);
-		}
+	while let Some((mut c, mut v, mut occ)) = tree_stack.pop() {
+		unpurify(&mut occ, &vars, &mut c, &mut v, &tree_index, &var_index);
 
-		let mut tree_stack = vec![(clause_assignment, var_assignment, occ_list.clone())];
-		let mut leafs      = vec![];
+		// get next free variable.
+		let next = vars.iter().find(|v| {
+			let v_index = var_index[**v];
+			// product is 0 -> variable is pure or removed
+			occ[v_index].0.len() * occ[v_index].1.len() != 0
+		});
 
-		while let Some((mut c, mut v, mut occ)) = tree_stack.pop() {
-			unpurify(&mut occ, &vars, &mut c, &mut v, &tree_index, &var_index);
-
-			// get next free variable
-			let next = vars.iter().find(|v| {
-				let v_index = var_index[**v];
-				// product is 0 -> variable is pure or removed
-				occ_list[v_index].0.len() * occ_list[v_index].1.len() != 0
-			});
-
-			if let Some(&var) = next {
-				// make copies to mutate for when var is 0
-				let mut c_0   = c.clone();
-				let v_0       = v | 1 << var_index[var];
-				let mut occ_0 = occ.clone();
-				// copies for when var is 1
-				let mut c_1   = c.clone();
-				let v_1       = v.clone();
-				let mut occ_1 = occ.clone();
-
-				for &c in clauses.iter() {
-					if occ_list[var_index[var]].0.contains(&c) {
-						// c is satisfied when var is 0
-						set_bit(&mut c_0, tree_index[c], true);
-						delete_clause_from_occ(&mut occ_0, &c, &vars, &var_index);
-					} else if occ_list[var_index[var]].1.contains(&c) {
-						// c is satisfied when var is 1
-						set_bit(&mut c_1, tree_index[c], true);
-						delete_clause_from_occ(&mut occ_1, &c, &vars, &var_index);
-					}
-				}
-
-				tree_stack.push((c_0, v_0, occ_0));
-				tree_stack.push((c_1, v_1, occ_1));
-			} else {
-				// no variable left
-				leafs.push((c, v));
+		if let Some(&var) = next {
+			// set var to 0
+			let mut c_0   = c.clone();
+			let v_0       = v.clone();
+			let mut occ_0 = occ.clone();
+			for &c in &occ[var_index[var]].0 {
+				// c is satisfied when var is 0
+				set_bit(&mut c_0, tree_index[c], true);
+				delete_clause_from_occ(&mut occ_0, &c, &vars, &var_index);
 			}
-		}
+			// remove unsatisfied literals
+			occ_0[var_index[var]].1 = Set::default();
 
-		
-		for (c_bits, v_bits) in leafs {
-			for (c, s, v) in sat.iter().chain(unsat.iter()) {
-				let mut new_assignment = c | c_bits;
-				set_bit(&mut new_assignment, tree_index[*clause], false);
-				let other          = &table[new_assignment];
-				// only override the entry if it is either empty or has a lower score
-				let overwrite      = other.is_none() || matches!(other, Some((other_s, _)) if *other_s < *s);
-				
-				if overwrite {
-					let mut v = v.clone();
-					v.extend(extract_vars(v_bits, &vars, &var_index));
-					table[new_assignment] = Some((s + weight, v));
-				}
+			// set var to 1
+			let mut c_1   = c.clone();
+			let v_1       = v.clone() | 1 << var_index[var];
+			let mut occ_1 = occ.clone();
+			for &c in &occ[var_index[var]].1 {
+				// c is satisfied when var is 1
+				set_bit(&mut c_1, tree_index[c], true);
+				delete_clause_from_occ(&mut occ_1, &c, &vars, &var_index);
+			}
+			// remove unsatisfied literals
+			occ_1[var_index[var]].0 = Set::default();
+
+			tree_stack.push((c_0, v_0, occ_0));
+			tree_stack.push((c_1, v_1, occ_1));
+		} else {
+			// no variable left
+			leafs.push((c, v));
+		}
+	}
+	
+	for (c_bits, v_bits) in leafs {
+		for (c, s, v) in configs.iter() {
+			let new_assignment = c | c_bits;
+			let other          = &table[new_assignment];
+			// only override the entry if it is either empty or has a lower score
+			let overwrite      = other.is_none() || matches!(other, Some((other_s, _)) if *other_s < *s);
+			
+			if overwrite {
+				let mut v = v.clone();
+				v.extend(extract_vars(v_bits, &vars, &var_index));
+				table[new_assignment] = Some((*s, v));
 			}
 		}
 	}
+
 }
 
 fn compress_table(table: ConfigTable) -> Vec<Configuration> {
@@ -398,4 +278,37 @@ fn delete_clause_from_occ(occ: &mut OccurenceList, c: &usize, vars: &Set<usize>,
 }
 fn extract_vars(var_bits: usize, vars: &Set<usize>, var_index: &Vec<usize>) -> Vec<usize> {
 	vars.iter().filter(|v| get_bit(&var_bits, var_index[**v])).map(|v| *v).collect_vec()
+}
+
+fn reject_unsatisfied(config: &mut Vec<Configuration>, clause: usize, tree_index: &Vec<usize>, f: &Formula) {
+	let mut rejected = vec![];
+
+	for (i, (a, s, _)) in config.iter_mut().enumerate() {
+		if get_bit(a, tree_index[clause]) {
+			// clause is true: unset bit and update score
+			set_bit(a, tree_index[clause], false);
+			*s += if f.is_hard(&clause) { 0 } else { f.weight(&clause) };
+		} else if f.is_hard(&clause) {
+			// clause is not true, but is a hard clause: reject assignment
+			rejected.push(i);
+		}
+	}
+	
+	// remove rejected configs
+	rejected.reverse();
+	for i in rejected {
+		config.swap_remove(i);
+	}
+}
+
+fn simplify_configs(configs: &mut Vec<Configuration>, k: usize) {
+	let max_score = *configs.iter().map(|(_, s, _)| s).max().unwrap();
+
+	for (c, s, v) in configs.clone() {
+		// if all k bits are set and we have the best score we have no reason to do anything else
+		if c == ((1 << k) - 1) && s == max_score {
+			*configs = vec![(c, s, v)];
+			break;
+		}
+	}
 }
