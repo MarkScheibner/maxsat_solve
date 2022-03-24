@@ -62,7 +62,9 @@ fn main() -> anyhow::Result<()>{
 			let merged = merge_solutions(solutions, renamings);
 			let assignment = unpack_solution(assignment, merged, renaming);
 			println!("c max: {}, pre: {}, solver: {}", max_score, s, score);
-			println!("c Testing assignment gives: {:?}", copy.test_assignment(&assignment));
+			if args.contains("-t") || args.contains("--test") {
+				println!("c Testing assignment gives: {:?}", copy.test_assignment(&assignment));
+			}
 			
 			println!("s OPTIMUM FOUND");
 			println!("o {}", max_score - (score + s));
