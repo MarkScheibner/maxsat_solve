@@ -72,7 +72,7 @@ impl Solve for Incidence {
 					let (left_config, clauses) = config_stack.pop().unwrap();
 					let (right_config, _)      = config_stack.pop().unwrap();
 					
-					let intersection           = config_intersection(left_config, right_config, clauses);
+					let intersection           = config_intersection(left_config, right_config, clauses, k);
 					
 					config_stack.push((intersection, clauses));
 				}
@@ -116,11 +116,8 @@ fn reject_unsatisfied(config: &mut Vec<Configuration>, clause: usize, tree_index
 	}
 }
 
-fn config_intersection(left: Vec<Configuration>, right: Vec<Configuration>, clauses: usize) -> Vec<Configuration> {
-	let _min_fingerprint = left.iter().map(|(a, _, _)| a & !clauses).max().unwrap();
-	let max_fingerprint = left.iter().map(|(a, _, _)| a & !clauses).max().unwrap();
-
-	let mut indexes     = vec![vec![]; max_fingerprint+1];
+fn config_intersection(left: Vec<Configuration>, right: Vec<Configuration>, clauses: usize, k: usize) -> Vec<Configuration> {
+	let mut indexes     = vec![vec![]; 1 << k];
 	for (i, (a, _ , _)) in left.iter().enumerate() {
 		// we only care about assignment of variables here.
 		let variable_assignment = a & !clauses;
@@ -129,7 +126,7 @@ fn config_intersection(left: Vec<Configuration>, right: Vec<Configuration>, clau
 	// keep only those variable assignments that are in left and in right
 	right.into_iter().filter_map(|(a, s, v)| {
 		let variable_assignment = a & !clauses;
-		if variable_assignment > max_fingerprint || indexes[variable_assignment].is_empty() {
+		if indexes[variable_assignment].is_empty() {
 			None
 		} else {
 			// since an assignment can have different values for clauses (due to forgotten variables) we need to look

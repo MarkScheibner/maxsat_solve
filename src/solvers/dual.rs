@@ -41,7 +41,7 @@ impl Solve for Dual {
 
 					// compress table into vec
 					let mut configs = compress_table(config_table);
-					simplify_configs(&mut configs, k);
+					// simplify_configs(&mut configs, k);
 
 					reject_unsatisfied(&mut configs, clause, &tree_index, &formula);
 
@@ -50,26 +50,28 @@ impl Solve for Dual {
 				Join => {
 					let left             = config_stack.pop().unwrap();
 					let right            = config_stack.pop().unwrap();
+					let combinations = left.into_iter().flat_map(|(a1, s1, v1)| right.iter().map(|(a2, s2, v2)| {
+						let combined_assignment = a1 | a2;
+						
+						let v1 = v1.clone();
+						let v2 = v2.clone();
+						let combined_vars = v1.into_iter().chain(v2.into_iter()).unique().collect_vec();
+						(combined_assignment, s1 + s2, combined_vars)
+					}).collect_vec());
 					let mut config_table = vec![None; 1 << k];
-					for (a1, s1, v1) in left {
-						for (a2, s2, v2) in right.iter() {
-							let combined_assignment = a1 | a2;
-							let replace = match config_table[combined_assignment] {
-								Some((other_s, _)) => other_s < s1 + s2,
-								None               => true
-							};
+					for (a, s, v) in combinations {
+						let replace = match config_table[a] {
+							Some((other_s, _)) => other_s < s,
+							None               => true
+						};
 
-							if replace {
-								let v1 = v1.clone();
-								let v2 = v2.clone();
-								let combined_vars = v1.into_iter().chain(v2.into_iter()).unique().collect_vec();
-								config_table[combined_assignment] = Some((s1 + s2, combined_vars));
-							}
+						if replace {
+							config_table[a] = Some((s, v));
 						}
 					}
 
-					let mut configs = compress_table(config_table);
-					simplify_configs(&mut configs, k);
+					let configs = compress_table(config_table);
+					// simplify_configs(&mut configs, k);
 
 					config_stack.push(configs);
 				},
@@ -204,18 +206,21 @@ fn make_sufficient_list(table: &mut ConfigTable, v_bag: &VirtualBag, configs: Ve
 		}
 	}
 	
-	for (c_bits, v_bits) in leafs {
-		for (c, s, v) in configs.iter() {
+	let combinations = leafs.into_iter().flat_map(|(c_bits, v_bits)| {
+		configs.iter().map(|(c, s, v)| {
 			let new_assignment = c | c_bits;
-			let other          = &table[new_assignment];
-			// only override the entry if it is either empty or has a lower score
-			let overwrite      = other.is_none() || matches!(other, Some((other_s, _)) if *other_s < *s);
-			
-			if overwrite {
-				let mut v = v.clone();
-				v.extend(extract_vars(v_bits, &vars, &var_index));
-				table[new_assignment] = Some((*s, v));
-			}
+			let mut v = v.clone();
+			v.extend(extract_vars(v_bits, &vars, &var_index));
+			(new_assignment, s, v)
+		}).collect_vec()
+	});
+
+	for (c, s, v) in combinations {
+		let other          = &table[c];
+		// only override the entry if it is either empty or has a lower score
+		let overwrite      = other.is_none() || matches!(other, Some((other_s, _)) if *other_s < *s);
+		if overwrite {
+			table[c] = Some((*s, v));
 		}
 	}
 
