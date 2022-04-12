@@ -6,7 +6,7 @@ maxsat_solve is a treewidth-guided MaxSAT-solver written in Rust that was develo
 
 To build the solver you first need to install the [Rust toolchain](https://www.rust-lang.org/). After installation run the following commands:
 ```bash
-$ git clone https://github.com
+$ git clone https://github.com/MarkScheibner/maxsat_solve.git
 $ cd maxsat_solve
 $ cargo build --release
 ```
