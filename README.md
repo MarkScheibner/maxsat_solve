@@ -22,3 +22,7 @@ To run the compiled binary run the following command:
 ```bash
 $ maxsat_solve -f /path/to/WCNF [-p|-d|-i] [-c] [-t]
 ```
+
+## License
+
+This project is licensed under the MIT license.
