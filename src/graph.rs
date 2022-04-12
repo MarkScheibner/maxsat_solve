@@ -84,7 +84,7 @@ impl Graph for DirectedGraph {
 	}
 
 	fn neighborhood(&self, node: usize) -> MetroHashSet<usize> {
-		// TODO this might take O(n), which is ok, as long as we iterate the whole neighborhood
+		// this might take O(n), which is ok, as long as we iterate the whole neighborhood
 		self.successor[node].union(&self.predecessor[node]).copied().collect()
 	}
 
@@ -180,7 +180,6 @@ impl From<Formula> for Dual {
 				// variables start at 1
 				let var = var.abs() as usize - 1 ;
 				// connect clause to all clauses that we already know contain var
-				// TODO move this
 				for clause in &var_sets[var] {
 					edge_count += 1;
 					edges[i].insert(*clause);

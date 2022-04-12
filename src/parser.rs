@@ -115,7 +115,6 @@ impl Formula {
 								// optimization.
 								for &(clause_index, var_index) in &occurence_list[unit_var].2 {
 									if clause_lengths[clause_index] != 1 { continue; } // we only care for unit clauses
-									// TODO this somehow causes crashes sometimes
 									let contained_literal = self.clauses[clause_index][var_index];
 									if contained_literal == literal {
 										// unit clause contains the same literal, so we can also clear the clause

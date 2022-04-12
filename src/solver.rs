@@ -125,7 +125,6 @@ pub fn make_nice(graph: &impl Graph, td: Decomposition, very_nice: bool) -> Nice
 					if very_nice {
 						// add all edges that are incident to forget
 						for &node in src_bag {
-							// TODO if both node and forget are in remove, this edge will be added twice
 							if graph.edge(node, forget) {
 								nice_decomposition.push((parent, Edge(node, forget)));
 								parent += 1;
