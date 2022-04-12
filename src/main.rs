@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()>{
 	let copy = formula.clone();
 	let max_score                 = formula.max_score();
 	let size_before               = formula.n_clauses;
-	let (assignment, renaming, s) = formula.preprocess().unwrap();
+	let preprocess_result         = formula.preprocess();
 	let _size_reduction           = size_before - formula.n_clauses;
 	let (sub_formulas, renamings) = formula.split();
 	
@@ -57,8 +57,8 @@ fn main() -> anyhow::Result<()>{
 	};
 
 	// undo local renamings and merge solutions
-	match sub_assignments {
-		Some((solutions, score)) => {
+	match sub_assignments.zip(preprocess_result) {
+		Some(((solutions, score), (assignment, renaming, s))) => {
 			let merged = merge_solutions(solutions, renamings);
 			let assignment = unpack_solution(assignment, merged, renaming);
 			println!("c max: {}, pre: {}, solver: {}", max_score, s, score);
@@ -93,11 +93,6 @@ where T: Solve + Graph + From<Formula> + std::fmt::Debug {
 		graph.list_edges().iter().for_each(|(u, v)| decomposition_graph.add_edge(*u, *v));
 		let peo = decomposition_graph.compute_peo(&mut rng);
 		let td  = decomposition_graph.peo_to_decomposition(&peo)?;
-		
-		// let mut file = fs::File::create(format!("../graph_{}.gr", i)).unwrap();
-		// write!(file, "{}", graph.print()).unwrap();
-		// let mut file = fs::File::create(format!("../graph_{}.td", i)).unwrap();
-		// write!(file, "{}", fasttw::print(&td, k, graph.size())).unwrap();
 
 		// solve instance
 		let k        = td.iter().map(|(_, bag)| bag.len()).max().unwrap_or(0);

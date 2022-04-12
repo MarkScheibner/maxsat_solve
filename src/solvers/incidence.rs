@@ -19,20 +19,20 @@ impl Solve for Incidence {
 					config_stack.push((vec![(0, 0, Vec::new())], 0));
 				},
 				&Introduce(clause) if self.is_clause(clause) => {
-					let mut config = config_stack.pop().unwrap();
+					let mut config = config_stack.pop()?;
 					// mark bit as clause
 					set_bit(&mut config.1, tree_index[clause], true);
 
 					config_stack.push(config);
 				},
 				&Introduce(var) => {
-					let (mut config, clause_mask) = config_stack.pop().unwrap();
+					let (mut config, clause_mask) = config_stack.pop()?;
 					duplicate_configs(&mut config, var, &tree_index);
 
 					config_stack.push((config, clause_mask));
 				},
 				&Forget(clause) if self.is_clause(clause) => {
-					let (mut config, mut clause_mask) = config_stack.pop().unwrap();
+					let (mut config, mut clause_mask) = config_stack.pop()?;
 					reject_unsatisfied(&mut config, clause, &tree_index, &formula);
 
 					// unmark clause-bit
@@ -42,7 +42,7 @@ impl Solve for Incidence {
 					config_stack.push((config, clause_mask));
 				},
 				&Forget(var) => {
-					let (mut config, clause_mask) = config_stack.pop().unwrap();
+					let (mut config, clause_mask) = config_stack.pop()?;
 					for (a, _, _) in &mut config {
 						// unset bit of variable
 						set_bit(a, tree_index[var], false);
@@ -52,7 +52,7 @@ impl Solve for Incidence {
 					config_stack.push((config, clause_mask));
 				},
 				&Edge(u, v)  => {
-					let (mut config, clause_mask) = config_stack.pop().unwrap();
+					let (mut config, clause_mask) = config_stack.pop()?;
 					let clause                    = if u < v { u } else { v };
 					let var                       = if u < v { v } else { u };
 					let negated                   = var == u;
@@ -69,8 +69,8 @@ impl Solve for Incidence {
 					config_stack.push((config, clause_mask));
 				},
 				&Join => {
-					let (left_config, clauses) = config_stack.pop().unwrap();
-					let (right_config, _)      = config_stack.pop().unwrap();
+					let (left_config, clauses) = config_stack.pop()?;
+					let (right_config, _)      = config_stack.pop()?;
 					
 					let intersection           = config_intersection(left_config, right_config, clauses);
 					
@@ -84,7 +84,7 @@ impl Solve for Incidence {
 			}
 		}
 
-		let last           = config_stack.pop().unwrap();
+		let last           = config_stack.pop()?;
 		let (_, score, variables) = &last.0[0];
 		let mut assignment = vec![false; formula.n_vars];
 		for v in variables {

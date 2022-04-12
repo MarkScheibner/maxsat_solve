@@ -104,7 +104,7 @@ impl Formula {
 							// this is a hard unit clause. find the remaining literal and add it to the work stack. If
 							// we already "pay" for stepping over a zeroed literal at the moment we set it to 0 we can
 							// do this in amortized O(1)
-							let unit_literal = *clause.iter().find(|&&l| l != 0).unwrap();
+							let unit_literal = *clause.iter().find(|&&l| l != 0)?;
 							let unit_var = unit_literal.abs() as usize -1;
 							// if there is already an assignment for the variable, then it has already become pure
 							if assignment[unit_var].is_none() {

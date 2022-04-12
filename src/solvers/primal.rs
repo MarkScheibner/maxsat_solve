@@ -22,7 +22,7 @@ impl Solve for Primal {
 					config_stack.push(vec![(0, 0, vec![])]);
 				}
 				&Introduce(var) => {
-					let mut configs  = config_stack.pop().unwrap();
+					let mut configs  = config_stack.pop()?;
 
 					// make duplicates of each config so we can try both values for var
 					duplicate_configs(&mut configs, var, &tree_index);
@@ -30,7 +30,7 @@ impl Solve for Primal {
 					config_stack.push(configs);
 				}
 				&Forget(var) => {
-					let mut configs = config_stack.pop().unwrap();
+					let mut configs = config_stack.pop()?;
 
 					let forget_clauses = occurences[var].iter().filter(|&&c| !forgotten[c]).collect_vec();
 
@@ -70,8 +70,8 @@ impl Solve for Primal {
 				}
 				&Edge(_, _) => { /* nothing */ }
 				&Join => {
-					let left = config_stack.pop().unwrap();
-					let right = config_stack.pop().unwrap();
+					let left = config_stack.pop()?;
+					let right = config_stack.pop()?;
 
 					// keep only intersection of left and right
 					let intersection = config_intersection(left, right);
@@ -81,7 +81,7 @@ impl Solve for Primal {
 			}
 		}
 
-		let last = config_stack.pop().unwrap();
+		let last = config_stack.pop()?;
 		let (_, score, variables) = &last[0];
 		let mut assignment = vec![false; formula.n_vars];
 		for v in variables {

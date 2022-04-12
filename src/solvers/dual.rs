@@ -33,7 +33,7 @@ impl Solve for Dual {
 					config_stack.push(vec![(0, 0, vec![])]);
 				},
 				&Forget(clause) => {
-					let configs = config_stack.pop().unwrap();
+					let configs = config_stack.pop()?;
 					let v_bag   = &v_bags[clause];
 
 					let mut config_table = vec![None; 1 << k];
@@ -48,8 +48,8 @@ impl Solve for Dual {
 					config_stack.push(configs);
 				},
 				Join => {
-					let left             = config_stack.pop().unwrap();
-					let right            = config_stack.pop().unwrap();
+					let left             = config_stack.pop()?;
+					let right            = config_stack.pop()?;
 					let mut config_table = vec![None; 1 << k];
 					for (a1, s1, v1) in left {
 						for (a2, s2, v2) in right.iter() {
@@ -78,7 +78,7 @@ impl Solve for Dual {
 			}
 		}
 
-		let last = config_stack.pop().unwrap();
+		let last = config_stack.pop()?;
 		let (_, score, variables) = &last[0];
 		let mut assignment = vec![false; formula.n_vars];
 		for v in variables {
